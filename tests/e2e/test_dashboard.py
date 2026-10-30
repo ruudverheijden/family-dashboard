@@ -22,7 +22,7 @@ def test_navigation_responsive_UI01_09(dashboard, size):
         assert p.evaluate('document.documentElement.scrollWidth <= innerWidth')
     expect(p.locator('.date-nav h2')).to_have_text(title)
     expect(p.locator('.day-heading').first).to_contain_text('ma')
-    for name in ['Taken', 'Routines', 'Boodschappen', 'Agenda']:
+    for name in ['Taken', 'Routines', 'Boodschappen', 'Beloningen', 'Agenda']:
         section(p, name)
         assert p.evaluate('document.documentElement.scrollWidth <= innerWidth')
     for b in p.locator('button:visible').all():
@@ -173,6 +173,28 @@ def test_task_assignment_repeat_undo_history_TK01_04(dashboard, mode, count):
     expect(p.locator('.history-item').filter(has_text='Voortgang')).to_have_count(2)
 
 
+def test_task_edit_updates_overview(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    section(p, 'Taken')
+    p.get_by_role('button', name='Nieuwe taak', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Oude titel')
+    p.get_by_label('Alex', exact=True).check()
+    save(p)
+    row = p.locator('.task-row')
+    expect(row).to_contain_text('Oude titel')
+
+    p.get_by_role('button', name='Taak bewerken').click()
+    p.get_by_label('Titel', exact=True).fill('Nieuwe titel')
+    p.get_by_label('Beschrijving').fill('Bijgewerkte beschrijving')
+    save(p)
+
+    expect(row).to_contain_text('Nieuwe titel')
+    expect(row).to_contain_text('Bijgewerkte beschrijving')
+    expect(row).not_to_contain_text('Oude titel')
+
+
 def test_routine_progress_new_day_RT01_04(dashboard):
     p = dashboard
     login(p)
@@ -195,34 +217,24 @@ def test_routine_progress_new_day_RT01_04(dashboard):
     expect(p.get_by_text('1 van 2 stappen klaar')).to_be_visible()
 
 
-def test_ha_failure_isolated_HA01_05(dashboard):
+def test_ha_custom_dashboard_is_embedded_without_entity_api(dashboard):
     p = dashboard
-    p.route('**/api/ha/states', lambda r: r.fulfill(status=503, json={'detail': 'Home Assistant niet bereikbaar'}))
+    requests = []
+    p.on('request', lambda request: requests.append(request.url))
+    p.route('http://homeassistant.example.test:8123/**', lambda route: route.fulfill(content_type='text/html', body='<h1>Mijn HA-dashboard</h1>'))
+    login(p)
+    p.get_by_label('Serveradres', exact=True).fill('http://homeassistant.example.test:8123')
+    p.get_by_label('Dashboardpad', exact=True).fill('/dashboard-family/overview')
+    p.get_by_role('button', name='Instellingen opslaan').click()
+    expect(p.locator('#dialog')).not_to_be_visible()
     p.get_by_role('button', name='Home Assistant', exact=True).click()
-    expect(p.get_by_role('alert')).to_contain_text('niet bereikbaar')
-    p.get_by_role('button', name='Immich', exact=True).click()
-    expect(p.get_by_role('heading', name='Jullie herinneringen verdienen een plekje.')).to_be_visible()
-    p.get_by_role('button', name='Kalender', exact=True).click()
-    grocery(p)
-
-
-def test_ha_selected_control_HA03_05(dashboard):
-    p = dashboard
-    state = {'configured': True, 'entities': [
-        {'id':'light.test', 'name':'Testlamp', 'state':'off', 'unit':'', 'controllable':True},
-        {'id':'sensor.test', 'name':'Temperatuur', 'state':'20', 'unit':'°C', 'controllable':False}]}
-    p.route('**/api/ha/states', lambda r: r.fulfill(json=state))
-    commands = []
-    def control(r):
-        commands.append(r.request.post_data_json)
-        state['entities'][0]['state'] = 'on'
-        r.fulfill(json={'ok':True})
-    p.route('**/api/ha/control', control)
-    p.get_by_role('button', name='Home Assistant', exact=True).click()
-    p.get_by_role('button', name='Aanzetten').click()
-    expect(p.get_by_role('button', name='Uitzetten')).to_be_visible()
-    assert commands == [{'entity_id':'light.test', 'action':'turn_on'}]
-    expect(p.locator('article').filter(has_text='Temperatuur').get_by_role('button')).to_have_count(0)
+    frame = p.locator('#ha-dashboard')
+    expect(frame).to_be_visible()
+    expect(frame).to_have_attribute('src', 'http://homeassistant.example.test:8123/dashboard-family/overview')
+    expect(p.get_by_role('link', name='Home Assistant openen in een nieuw tabblad')).to_have_attribute('href', 'http://homeassistant.example.test:8123/dashboard-family/overview')
+    assert not p.locator('[data-ha-entity]').count()
+    assert not any('/api/ha/' in url for url in requests)
+    expect(p.frame_locator('#ha-dashboard').get_by_role('heading', name='Mijn HA-dashboard')).to_be_visible()
 
 
 def photos(p):
@@ -393,3 +405,38 @@ def test_backend_disconnect_recovers_SYS02(dashboard):
     expect(p.locator('#connection')).to_be_visible()
     p.unroute('**/api/state*')
     expect(p.locator('#connection')).not_to_be_visible()
+
+
+def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    section(p, 'Taken')
+    p.get_by_role('button', name='Nieuwe taak', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Bed opmaken')
+    p.get_by_label('Alex', exact=True).check()
+    p.get_by_label('Punten bij voltooien').fill('5')
+    save(p)
+    p.get_by_role('button', name='Voltooi Bed opmaken').click()
+
+    section(p, 'Beloningen')
+    p.locator('[data-member]').filter(has_text='Alex').click()
+    expect(p.get_by_text('5 beschikbaar', exact=False)).to_be_visible()
+    p.get_by_role('button', name='Beheerinstellingen', exact=True).click()
+    p.get_by_role('button', name='Beloning toevoegen').click()
+    p.get_by_label('Naam', exact=True).fill('Filmavond')
+    p.get_by_label('Prijs in punten').fill('4')
+    save(p)
+
+    section(p, 'Beloningen')
+    p.get_by_role('button', name='Aanvragen').click()
+    expect(p.get_by_text('4 gereserveerd', exact=False)).to_be_visible()
+    expect(p.get_by_text('In afwachting')).to_be_visible()
+
+    p.get_by_role('button', name='Beheerinstellingen', exact=True).click()
+    p.get_by_role('button', name='Goedkeuren').click()
+    expect(p.get_by_text('Beloning goedgekeurd; punten afgeschreven.')).to_be_visible()
+    p.get_by_role('button', name='Sluiten').click()
+    section(p, 'Beloningen')
+    expect(p.get_by_text('1 beschikbaar', exact=False)).to_be_visible()
+    expect(p.get_by_text('Goedgekeurd', exact=True)).to_be_visible()

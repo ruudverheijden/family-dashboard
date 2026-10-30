@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -57,6 +58,16 @@ def test_cross_origin_rejected(client):
     with TestClient(main.app) as c:
         assert c.post('/api/logout').status_code == 403
 
+def test_environment_loader_reads_dotenv_without_overriding_environment(tmp_path, monkeypatch):
+    env_file=tmp_path/'.env'
+    env_file.write_text('ADMIN_PASSWORD=fixture-password\n')
+    monkeypatch.delenv('ADMIN_PASSWORD',raising=False)
+    main.load_environment(env_file)
+    assert os.environ['ADMIN_PASSWORD']=='fixture-password'
+    monkeypatch.setenv('ADMIN_PASSWORD','already-set')
+    main.load_environment(env_file)
+    assert os.environ['ADMIN_PASSWORD']=='already-set'
+
 def test_groceries_idempotency_conflict_and_restore(client):
     rid = str(uuid.uuid4())
     id, r = create(client, 'groceries', {'name':'Appels'}, request_id=rid)
@@ -80,6 +91,169 @@ def test_simultaneous_task_completion_one_history_entry(client):
     assert len(runs) == 1 and runs[0]['done'] == [0] and runs[0]['version'] == 2
     history = client.get('/api/history').json()
     assert len([h for h in history if h['kind']=='runs']) == 1
+
+def test_task_points_are_idempotent_and_undo_creates_a_reversal(client):
+    task_id, _, _ = setup_task(client)
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = next(r for r in state['runs'] if r['template_id'] == task_id)
+    payload = {'done': [0]}
+    first = create(client, 'runs', payload, id=run['id'], version=run['version'])[1]
+    assert first.status_code == 200
+    assert client.get('/api/state').json()['balances'][member_id] == {'balance': 5, 'reserved': 0, 'available': 5}
+
+    duplicate = create(client, 'runs', payload, id=run['id'], version=run['version'])[1]
+    assert duplicate.status_code == 200
+    with db.connect() as connection:
+        assert connection.execute('SELECT COUNT(*) FROM point_transactions').fetchone()[0] == 1
+
+    updated = next(r for r in client.get('/api/state').json()['runs'] if r['id'] == run['id'])
+    assert create(client, 'runs', {'done': []}, id=run['id'], version=updated['version'])[1].status_code == 200
+    state = client.get('/api/state').json()
+    assert state['balances'][member_id]['balance'] == 0
+    assert sorted(t['amount'] for t in state['point_transactions']) == [-5, 5]
+
+    reopened = next(r for r in state['runs'] if r['id'] == run['id'])
+    assert create(client, 'runs', payload, id=run['id'], version=reopened['version'])[1].status_code == 200
+    assert client.get('/api/state').json()['balances'][member_id]['balance'] == 5
+
+def test_shared_task_awards_each_assigned_member_once(client):
+    setup_task(client, mode='shared', members=2)
+    state = client.get('/api/state').json()
+    run = state['runs'][0]
+    assert run['member'] == 'shared'
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    state = client.get('/api/state').json()
+    assert [state['balances'][m['id']]['balance'] for m in state['members']] == [5, 5]
+    assert len([t for t in state['point_transactions'] if t['reason'] == 'completion']) == 2
+
+def test_routine_awards_only_once_when_all_steps_are_done_and_reverses_on_undo(client):
+    setup_task(client, kind='routines')
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = state['runs'][0]
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    assert client.get('/api/state').json()['balances'][member_id]['balance'] == 0
+    run = next(r for r in client.get('/api/state').json()['runs'] if r['id'] == run['id'])
+    assert create(client, 'runs', {'done': [0, 1]}, id=run['id'], version=run['version'])[1].status_code == 200
+    state = client.get('/api/state').json()
+    assert state['balances'][member_id]['balance'] == 5
+    assert len([t for t in state['point_transactions'] if t['reason'] == 'completion']) == 1
+    run = next(r for r in state['runs'] if r['id'] == run['id'])
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    state = client.get('/api/state').json()
+    assert state['balances'][member_id]['balance'] == 0
+    assert sorted(t['amount'] for t in state['point_transactions']) == [-5, 5]
+
+def test_reward_request_reserves_points_and_approval_debits_once(client):
+    task_id, _, _ = setup_task(client)
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = next(r for r in state['runs'] if r['template_id'] == task_id)
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    reward_id, saved = create(client, 'rewards', {
+        'title': 'Extra schermtijd', 'description': 'Een half uur', 'icon': '🎮', 'price': 4,
+    })
+    assert saved.status_code == 200
+
+    request_payload = {'request_id': 'reward-request-001', 'member_id': member_id, 'reward_id': reward_id}
+    requested = client.post('/api/reward-requests', json=request_payload)
+    assert requested.status_code == 200
+    repeated = client.post('/api/reward-requests', json=request_payload)
+    assert repeated.json() == requested.json()
+    state = client.get('/api/state').json()
+    assert state['balances'][member_id] == {'balance': 5, 'reserved': 4, 'available': 1}
+    assert len(state['reward_requests']) == 1
+
+    decision_payload = {'request_id': 'reward-approve-001', 'action': 'approve'}
+    path = f"/api/admin/reward-requests/{requested.json()['id']}/decision"
+    approved = client.post(path, json=decision_payload)
+    assert approved.status_code == 200
+    assert client.post(path, json=decision_payload).json() == approved.json()
+    state = client.get('/api/state').json()
+    assert state['balances'][member_id] == {'balance': 1, 'reserved': 0, 'available': 1}
+    assert len([t for t in state['point_transactions'] if t['reason'] == 'reward-redemption']) == 1
+
+def test_pending_reward_requests_reserve_balance_and_rejection_releases_it(client):
+    _, _, _ = setup_task(client)
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = state['runs'][0]
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    reward_id, result = create(client, 'rewards', {'title': 'Sticker', 'price': 3})
+    assert result.status_code == 200
+    payload = {'request_id': 'reward-pending-001', 'member_id': member_id, 'reward_id': reward_id}
+    requested = client.post('/api/reward-requests', json=payload)
+    assert requested.status_code == 200
+    assert client.post('/api/reward-requests', json={**payload, 'request_id': 'reward-pending-002'}).status_code == 409
+    path = f"/api/admin/reward-requests/{requested.json()['id']}/decision"
+    rejected = client.post(path, json={'request_id': 'reward-reject-001', 'action': 'reject'})
+    assert rejected.status_code == 200
+    assert client.get('/api/state').json()['balances'][member_id] == {'balance': 5, 'reserved': 0, 'available': 5}
+
+def test_concurrent_reward_requests_cannot_reserve_the_same_points_twice(client):
+    _, _, _ = setup_task(client)
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = state['runs'][0]
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    reward_id, result = create(client, 'rewards', {'title': 'Kaartje', 'price': 4})
+    assert result.status_code == 200
+
+    def request(number):
+        return client.post('/api/reward-requests', json={
+            'request_id': f'concurrent-reward-{number:02}',
+            'member_id': member_id,
+            'reward_id': reward_id,
+        }).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(request, range(2))) == [200, 409]
+    state = client.get('/api/state').json()
+    assert len(state['reward_requests']) == 1
+    assert state['balances'][member_id] == {'balance': 5, 'reserved': 4, 'available': 1}
+
+def test_reward_decisions_require_admin(client):
+    _, _, _ = setup_task(client)
+    state = client.get('/api/state').json()
+    member_id = state['members'][0]['id']
+    run = state['runs'][0]
+    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
+    reward_id, result = create(client, 'rewards', {'title': 'Boek', 'price': 1})
+    assert result.status_code == 200
+    requested = client.post('/api/reward-requests', json={
+        'request_id': 'auth-reward-request', 'member_id': member_id, 'reward_id': reward_id,
+    })
+    assert requested.status_code == 200
+    client.cookies.clear()
+    decision = client.post(
+        f"/api/admin/reward-requests/{requested.json()['id']}/decision",
+        json={'request_id': 'unauthorized-reward-decision', 'action': 'approve'},
+    )
+    assert decision.status_code == 401
+
+def test_reward_catalog_is_admin_only_and_price_is_validated(client):
+    client.cookies.clear()
+    reward_id = str(uuid.uuid4())
+    payload = {'request_id': str(uuid.uuid4()), 'id': reward_id, 'version': 0, 'body': {'title': 'Beloning', 'price': 0}}
+    assert client.post('/api/entities/rewards', json=payload).status_code == 401
+    client.cookies.set('family_admin', 'test-admin')
+    assert client.post('/api/entities/rewards', json=payload).status_code == 422
+
+def test_v1_database_migrates_to_reward_ledger(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, 'DATA', tmp_path)
+    with sqlite3.connect(tmp_path / 'family.db') as connection:
+        connection.execute('CREATE TABLE settings (id INTEGER PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL)')
+        connection.execute(
+            'INSERT INTO settings VALUES (1,1,?)',
+            (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'ha_dashboard': '/lovelace/0', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15}),),
+        )
+        connection.execute('PRAGMA user_version=1')
+    db.init()
+    with db.connect() as connection:
+        assert connection.execute('PRAGMA user_version').fetchone()[0] == 2
+        assert connection.execute("SELECT name FROM sqlite_master WHERE name='point_transactions'").fetchone()
+        assert db.settings(connection)['timezone'] == 'Europe/Amsterdam'
 
 def test_individual_tasks_and_routine_new_day(client):
     setup_task(client, members=2)
@@ -249,98 +423,43 @@ def test_immich_album_revocation_and_bounded_cache(client, monkeypatch):
 def test_untrusted_entity_ids_rejected(client):
     assert create(client,'groceries',{'name':'Test'},id='\"><img src=x>')[1].status_code==422
 
-def configure_ha(client):
+def test_ha_dashboard_settings_are_saved_without_legacy_credentials(client):
     cfg=client.get('/api/admin/settings').json()
-    cfg.update(ha_url='http://ha.example.org:8123',ha_token='secret-ha-token',ha_entities=['light.kitchen','sensor.temperature'])
+    assert cfg['ha_dashboard']=='/lovelace/0'
+    cfg.update(ha_url='http://ha.example.org:8123',ha_dashboard='/dashboard-family/overview',ha_token='old-secret',ha_entities=['light.kitchen'])
     assert client.post('/api/admin/settings',json=cfg).status_code==200
-    return cfg
+    assert client.get('/api/state').json()['config']['ha_dashboard']=='/dashboard-family/overview'
+    saved=client.get('/api/admin/settings').json()
+    assert saved['ha_dashboard']=='/dashboard-family/overview'
+    assert 'ha_token' not in saved and 'ha_entities' not in saved
+    with db.connect() as connection:
+        assert 'ha_token' not in db.settings(connection) and 'ha_entities' not in db.settings(connection)
+    assert client.get('/api/ha/states').status_code==404
+    assert client.post('/api/ha/control',json={'entity_id':'light.kitchen','action':'turn_on'}).status_code==404
 
-def test_ha_token_private_preserved_and_revoked(client):
-    configure_ha(client)
-    cfg=client.get('/api/admin/settings').json()
-    assert cfg['ha_configured'] and 'ha_token' not in cfg
-    assert 'secret-ha-token' not in client.get('/api/state').text
-    assert client.post('/api/admin/settings',json=cfg).status_code==200
-    with db.connect() as c: assert db.settings(c)['ha_token']=='secret-ha-token'
-    cfg=client.get('/api/admin/settings').json()
-    cfg.update(ha_clear_token=True)
-    assert client.post('/api/admin/settings',json=cfg).status_code==200
-    assert not client.get('/api/admin/settings').json()['ha_configured']
+def test_legacy_ha_credentials_are_removed_on_database_init(client):
+    with db.connect() as connection:
+        body=json.loads(connection.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
+        body.update(ha_token='old-secret',ha_entities=['light.kitchen'])
+        connection.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(body),))
+    db.init()
+    with db.connect() as connection:
+        stored=json.loads(connection.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
+    assert 'ha_token' not in stored and 'ha_entities' not in stored
 
-def test_ha_bearer_and_entity_allowlist(client,monkeypatch):
-    from app import home_assistant as ha
-    import httpx
-    configure_ha(client)
-    calls=[]
-    class FakeClient:
-        def __init__(self,**kwargs): assert kwargs['follow_redirects'] is False
-        def __enter__(self): return self
-        def __exit__(self,*a): pass
-        def request(self,method,url,headers,json):
-            assert headers['Authorization']=='Bearer secret-ha-token'
-            calls.append((method,url,json))
-            payload=[{'entity_id':'light.kitchen','state':'on','attributes':{'friendly_name':'Keuken'}},{'entity_id':'sensor.temperature','state':'20','attributes':{'unit_of_measurement':'°C'}},{'entity_id':'lock.frontdoor','state':'locked','attributes':{}}] if method=='GET' else []
-            return httpx.Response(200,json=payload,request=httpx.Request(method,url))
-    monkeypatch.setattr(ha.httpx,'Client',FakeClient)
-    client.cookies.clear()
-    states=client.get('/api/ha/states').json()
-    assert [e['id'] for e in states['entities']]==['light.kitchen','sensor.temperature']
-    assert client.post('/api/ha/control',json={'entity_id':'light.kitchen','action':'turn_off'}).status_code==200
-    assert calls[-1][1]=='http://ha.example.org:8123/api/services/light/turn_off'
-    assert calls[-1][2]=={'entity_id':'light.kitchen'}
-    for entity,action in [('lock.frontdoor','unlock'),('sensor.temperature','turn_on'),('light.kitchen','toggle')]:
-        assert client.post('/api/ha/control',json={'entity_id':entity,'action':action}).status_code==403
-    assert client.post('/api/admin/ha/discover',json={}).status_code==401
-
-def test_ha_rejected_token_sanitized(client,monkeypatch):
-    from app import home_assistant as ha
-    import httpx
-    configure_ha(client)
-    class FakeClient:
-        def __init__(self,**kwargs): pass
-        def __enter__(self): return self
-        def __exit__(self,*a): pass
-        def request(self,*a,**kwargs): return httpx.Response(401,text='secret-ha-token',request=httpx.Request('GET','http://ha.example.org'))
-    monkeypatch.setattr(ha.httpx,'Client',FakeClient)
-    response=client.get('/api/ha/states')
-    assert response.status_code==502 and 'secret-ha-token' not in response.text
-    assert client.get('/api/state').status_code==200
-
-def test_ha_host_change_requires_new_token(client):
-    configure_ha(client)
-    cfg=client.get('/api/admin/settings').json()
-    cfg['ha_url']='http://different.example.org'
-    assert client.post('/api/admin/settings',json=cfg).status_code==422
-
-@pytest.mark.parametrize('failure,expected,status', [
-    ('route','geen netwerkroute',502),
-    ('refused','weigert de netwerkverbinding',502),
-    ('timeout','10 seconden',504),
-    ('html','geen geldige JSON',502),
-    ('redirect','ander adres',502),
-    ('server','HTTP 503',502),
-    ('shape','geldige lijst',502),
+@pytest.mark.parametrize('field,value', [
+    ('ha_url','http://ha.example.org/lovelace/0'),
+    ('ha_url','http://ha.example.org:invalid'),
+    ('ha_dashboard','//other.example.org/dashboard'),
+    ('ha_dashboard','/lovelace/0?token=secret'),
+    ('ha_dashboard','/../admin'),
+    ('ha_dashboard','https://other.example.org'),
 ])
-def test_ha_diagnostic_errors(client, monkeypatch, failure, expected, status):
-    from app import home_assistant as ha
-    import httpx
-    configure_ha(client)
-    class FakeClient:
-        def __init__(self,**kwargs): pass
-        def __enter__(self): return self
-        def __exit__(self,*args): pass
-        def request(self,*args,**kwargs):
-            if failure=='route': raise httpx.ConnectError('[Errno 65] No route to host secret-ha-token')
-            if failure=='refused': raise httpx.ConnectError('Connection refused secret-ha-token')
-            if failure=='timeout': raise httpx.ConnectTimeout('secret-ha-token')
-            request=httpx.Request('GET','http://ha.example.org')
-            if failure=='shape': return httpx.Response(200,json={'unexpected':'secret-ha-token'},request=request)
-            return httpx.Response({'html':200,'redirect':302,'server':503}[failure],text='secret-ha-token',request=request)
-    monkeypatch.setattr(ha.httpx,'Client',FakeClient)
-    response=client.get('/api/ha/states')
-    assert response.status_code==status and expected in response.json()['detail']
-    assert 'secret-ha-token' not in response.text
-
+def test_invalid_ha_dashboard_configuration_rejected(client,field,value):
+    cfg=client.get('/api/admin/settings').json()
+    cfg['ha_url']='http://ha.example.org:8123'
+    cfg[field]=value
+    assert client.post('/api/admin/settings',json=cfg).status_code==422
 
 @pytest.mark.parametrize('service', ['caldav', 'immich'])
 def test_changed_endpoint_never_receives_saved_credentials(client, monkeypatch, service):

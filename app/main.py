@@ -3,21 +3,29 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
-from . import integrations, home_assistant
+from . import integrations
 from .db import connect, entities, init, settings
+
+def load_environment(env_file=None):
+    load_dotenv(env_file or Path(__file__).resolve().parent.parent / '.env')
+
+load_environment()
 
 sessions = {}
 attempts = {}
@@ -144,6 +152,55 @@ def catch_up_background():
 def read_runs(db, day):
     return [{**dict(r), 'body': json.loads(r['body']), 'done': json.loads(r['done'])} for r in db.execute('SELECT * FROM runs WHERE day=? ORDER BY rowid', (day,))]
 
+def point_balances(db):
+    balances = {member['id']: {'balance': 0, 'reserved': 0, 'available': 0} for member in entities(db, 'members')}
+    for row in db.execute('SELECT member_id, SUM(amount) AS balance FROM point_transactions GROUP BY member_id'):
+        if row['member_id'] in balances:
+            balances[row['member_id']]['balance'] = row['balance']
+    for row in db.execute('SELECT member_id, SUM(cost) AS reserved FROM reward_requests WHERE status=? GROUP BY member_id', ('pending',)):
+        if row['member_id'] in balances:
+            balances[row['member_id']]['reserved'] = row['reserved']
+    for balance in balances.values():
+        balance['available'] = balance['balance'] - balance['reserved']
+    return balances
+
+def completion_members(run, template):
+    if run['kind'] == 'tasks' and template.get('mode') == 'shared':
+        return list(dict.fromkeys(template.get('members', [])))
+    return [run['member']]
+
+def completion_award(run, done):
+    template = json.loads(run['body'])
+    if run['kind'] == 'tasks':
+        complete = 0 in done
+    else:
+        complete = len(done) == len(template.get('steps', []))
+    return (template, complete, template.get('points', 0))
+
+def update_completion_points(db, run, done, completion_version):
+    template, complete, points = completion_award(run, done)
+    if run['kind'] not in ('tasks', 'routines') or not points:
+        return
+    members = completion_members(run, template)
+    if complete:
+        for member_id in members:
+            db.execute(
+                'INSERT OR IGNORE INTO point_transactions (id,member_id,amount,reason,source_key,related_id) VALUES (?,?,?,?,?,?)',
+                (str(uuid.uuid4()), member_id, points, 'completion', f'run:{run["id"]}:completion:{completion_version}:{member_id}', run['id']),
+            )
+        return
+    originals = db.execute(
+        '''SELECT award.* FROM point_transactions award
+           LEFT JOIN point_transactions reversal ON reversal.reverses_id=award.id
+           WHERE award.related_id=? AND award.reason='completion' AND reversal.id IS NULL''',
+        (run['id'],),
+    ).fetchall()
+    for award in originals:
+        db.execute(
+            'INSERT OR IGNORE INTO point_transactions (id,member_id,amount,reason,source_key,related_id,reverses_id) VALUES (?,?,?,?,?,?,?)',
+            (str(uuid.uuid4()), award['member_id'], -award['amount'], 'completion-undone', f'reversal:{award["id"]}', run['id'], award['id']),
+        )
+
 @app.get('/api/state')
 def state(day: str | None = None):
     with connect() as db:
@@ -158,7 +215,27 @@ def state(day: str | None = None):
             raise HTTPException(422, 'Kies een datum binnen twee jaar van vandaag.')
         catch_up(db)
         materialize(db, day)
-        return {'day': day, 'members': entities(db, 'members'), 'tasks': entities(db, 'tasks'), 'routines': entities(db, 'routines'), 'groceries': entities(db, 'groceries'), 'runs': read_runs(db, day), 'events': [e for r in db.execute('SELECT body FROM calendars') for e in json.loads(r[0])], 'status': {r['id']: json.loads(r['body']) for r in db.execute('SELECT * FROM status')}, 'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'slide_seconds')}, 'photos': list(integrations.assets.values())}
+        return {
+            'day': day,
+            'members': entities(db, 'members'),
+            'tasks': entities(db, 'tasks'),
+            'routines': entities(db, 'routines'),
+            'groceries': entities(db, 'groceries'),
+            'runs': read_runs(db, day),
+            'events': [e for r in db.execute('SELECT body FROM calendars') for e in json.loads(r[0])],
+            'status': {r['id']: json.loads(r['body']) for r in db.execute('SELECT * FROM status')},
+            'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds')},
+            'photos': list(integrations.assets.values()),
+            'rewards': [reward for reward in entities(db, 'rewards') if not reward.get('archived')],
+            'balances': point_balances(db),
+            'reward_requests': [dict(row) for row in db.execute(
+                'SELECT * FROM reward_requests ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END, created_at DESC LIMIT 100',
+                ('pending',),
+            )],
+            'point_transactions': [dict(row) for row in db.execute(
+                'SELECT * FROM point_transactions ORDER BY created_at DESC, rowid DESC LIMIT 100'
+            )],
+        }
 
 class Mutation(BaseModel):
     request_id: str = Field(min_length=8, max_length=100)
@@ -166,6 +243,15 @@ class Mutation(BaseModel):
     version: int = Field(ge=0)
     action: str = 'save'
     body: dict = Field(default_factory=dict)
+
+class RewardRequestInput(BaseModel):
+    request_id: str = Field(min_length=8, max_length=100)
+    member_id: str
+    reward_id: str
+
+class RewardDecisionInput(BaseModel):
+    request_id: str = Field(min_length=8, max_length=100)
+    action: str
 
 def text_field(data, key, maximum=200, required=False):
     value = data.get(key, '')
@@ -184,6 +270,16 @@ def validate(kind, data, db):
         if not isinstance(data.get('done', False), bool):
             raise HTTPException(422, 'Ongeldige status.')
         return {'name': text_field(data, 'name', 150, True), 'quantity': text_field(data, 'quantity', 60), 'note': text_field(data, 'note', 500), 'done': data.get('done', False)}
+    if kind == 'rewards':
+        price = data.get('price')
+        if type(price) is not int or not 1 <= price <= 100000:
+            raise HTTPException(422, 'De puntenprijs moet tussen 1 en 100000 liggen.')
+        return {
+            'title': text_field(data, 'title', 100, True),
+            'description': text_field(data, 'description', 500),
+            'icon': text_field(data, 'icon', 8) or '🎁',
+            'price': price,
+        }
     title = text_field(data, 'title', 150, True)
     try:
         start_date = date.fromisoformat(data.get('date', '')).isoformat()
@@ -199,13 +295,14 @@ def validate(kind, data, db):
     if not isinstance(data.get('archived', False), bool):
         raise HTTPException(422, 'Ongeldige archiefstatus.')
     result = {'title': title, 'icon': text_field(data, 'icon', 8) or '✓', 'description': text_field(data, 'description', 1000), 'date': start_date, 'members': list(dict.fromkeys(people)), 'weekdays': weekdays, 'archived': bool(data.get('archived', False))}
+    points = data.get('points', 0)
+    if type(points) is not int or not 0 <= points <= 10000:
+        raise HTTPException(422, 'Punten moeten tussen 0 en 10000 liggen.')
+    result['points'] = points
     if kind == 'tasks':
         if data.get('repeat') not in ('once', 'daily', 'weekly') or data.get('mode') not in ('individual', 'shared'):
             raise HTTPException(422, 'Ongeldige herhaling of verdeling.')
-        points = data.get('points', 0)
-        if type(points) is not int or not 0 <= points <= 10000:
-            raise HTTPException(422, 'Punten moeten tussen 0 en 10000 liggen.')
-        result.update(repeat=data['repeat'], mode=data['mode'], points=points)
+        result.update(repeat=data['repeat'], mode=data['mode'])
     else:
         steps = data.get('steps', [])
         if not isinstance(steps, list) or not 1 <= len(steps) <= 30:
@@ -225,11 +322,11 @@ def validate(kind, data, db):
 
 @app.post('/api/entities/{kind}')
 def mutate(kind: str, body: Mutation, request: Request):
-    if kind not in ('members', 'tasks', 'routines', 'groceries', 'runs'):
+    if kind not in ('members', 'tasks', 'routines', 'groceries', 'rewards', 'runs'):
         raise HTTPException(404)
     if not _uuid(body.id):
         raise HTTPException(422, 'Ongeldig itemnummer.')
-    if kind == 'members':
+    if kind in ('members', 'rewards'):
         admin(request)
     if body.action not in ('save', 'delete'):
         raise HTTPException(422, 'Ongeldige actie.')
@@ -259,6 +356,7 @@ def mutate(kind: str, body: Mutation, request: Request):
             if done != json.loads(row['done']):
                 version += 1
                 db.execute('UPDATE runs SET done=?, version=? WHERE id=?', (json.dumps(done), version, body.id))
+                update_completion_points(db, row, done, version)
                 db.execute('INSERT INTO history(kind,entity_id,body) VALUES (?,?,?)', ('runs', body.id, json.dumps({'before': json.loads(row['done']), 'after': done})))
         else:
             row = db.execute('SELECT * FROM entities WHERE kind=? AND id=?', (kind, body.id)).fetchone()
@@ -274,8 +372,14 @@ def mutate(kind: str, body: Mutation, request: Request):
                     used = any(body.id in x['members'] for k in ('tasks', 'routines') for x in entities(db, k))
                     used = used or db.execute('SELECT 1 FROM runs WHERE member=?', (body.id,)).fetchone() is not None
                     used = used or any(c.get('member') == body.id for a in settings(db)['caldav'] for c in a.get('calendars', []))
+                    used = used or db.execute('SELECT 1 FROM point_transactions WHERE member_id=?', (body.id,)).fetchone() is not None
+                    used = used or db.execute('SELECT 1 FROM reward_requests WHERE member_id=?', (body.id,)).fetchone() is not None
                     if used:
                         raise HTTPException(409, 'Dit gezinslid is gekoppeld aan taken, routines, historie of agenda’s en kan niet worden verwijderd.')
+                if kind == 'rewards' and db.execute(
+                    'SELECT 1 FROM reward_requests WHERE reward_id=? AND status=?', (body.id, 'pending')
+                ).fetchone():
+                    raise HTTPException(409, 'Deze beloning heeft nog openstaande aanvragen en kan niet worden verwijderd.')
                 db.execute('DELETE FROM entities WHERE kind=? AND id=?', (kind, body.id))
             else:
                 data = validate(kind, body.body, db)
@@ -283,6 +387,106 @@ def mutate(kind: str, body: Mutation, request: Request):
             db.execute('INSERT INTO history(kind,entity_id,body) VALUES (?,?,?)', (kind, body.id, json.dumps({'before': json.loads(row['body']) if row else None, 'after': body.body if body.action == 'save' else None})))
             version += 1
         result = {'ok': True, 'version': version}
+        db.execute('INSERT INTO requests VALUES (?,?,?)', (body.request_id, fingerprint, json.dumps(result)))
+        return result
+
+@app.post('/api/reward-requests')
+def request_reward(body: RewardRequestInput):
+    if not _uuid(body.member_id) or not _uuid(body.reward_id):
+        raise HTTPException(422, 'Ongeldig gezinslid of beloningsnummer.')
+    fingerprint = hashlib.sha256(json.dumps(
+        {'kind': 'reward-request', **body.model_dump()}, sort_keys=True
+    ).encode()).hexdigest()
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        previous = db.execute('SELECT * FROM requests WHERE id=?', (body.request_id,)).fetchone()
+        if previous:
+            if previous['fingerprint'] != fingerprint:
+                raise HTTPException(409, 'Verzoeknummer is al gebruikt.')
+            return json.loads(previous['response'])
+        member = next((item for item in entities(db, 'members') if item['id'] == body.member_id), None)
+        reward = next((item for item in entities(db, 'rewards') if item['id'] == body.reward_id), None)
+        if not member or not reward or reward.get('archived'):
+            raise HTTPException(404, 'Gezinslid of beloning niet gevonden.')
+        balance = point_balances(db)[body.member_id]
+        if balance['available'] < reward['price']:
+            raise HTTPException(409, 'Er zijn niet genoeg beschikbare punten voor deze beloning.')
+        request_id = str(uuid.uuid4())
+        db.execute(
+            '''INSERT INTO reward_requests
+               (id,member_id,member_name,reward_id,reward_name,cost,status)
+               VALUES (?,?,?,?,?,?,?)''',
+            (request_id, body.member_id, member['name'], body.reward_id, reward['title'], reward['price'], 'pending'),
+        )
+        db.execute(
+            'INSERT INTO history(kind,entity_id,body) VALUES (?,?,?)',
+            ('reward-requests', request_id, json.dumps({
+                'member_id': body.member_id, 'member_name': member['name'],
+                'reward_id': body.reward_id, 'reward_name': reward['title'],
+                'cost': reward['price'], 'status': 'pending',
+            })),
+        )
+        result = {'ok': True, 'id': request_id, 'status': 'pending'}
+        db.execute('INSERT INTO requests VALUES (?,?,?)', (body.request_id, fingerprint, json.dumps(result)))
+        return result
+
+@app.post('/api/admin/reward-requests/{reward_request_id}/decision', dependencies=[Depends(admin)])
+def decide_reward_request(reward_request_id: str, body: RewardDecisionInput):
+    if not _uuid(reward_request_id):
+        raise HTTPException(422, 'Ongeldig aanvraagnummer.')
+    if body.action not in ('approve', 'reject'):
+        raise HTTPException(422, 'Kies goedkeuren of afwijzen.')
+    fingerprint = hashlib.sha256(json.dumps({
+        'kind': 'reward-decision', 'id': reward_request_id, **body.model_dump(),
+    }, sort_keys=True).encode()).hexdigest()
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        previous = db.execute('SELECT * FROM requests WHERE id=?', (body.request_id,)).fetchone()
+        if previous:
+            if previous['fingerprint'] != fingerprint:
+                raise HTTPException(409, 'Verzoeknummer is al gebruikt.')
+            return json.loads(previous['response'])
+        reward_request = db.execute(
+            'SELECT * FROM reward_requests WHERE id=?', (reward_request_id,)
+        ).fetchone()
+        if not reward_request:
+            raise HTTPException(404, 'Beloningsaanvraag niet gevonden.')
+        if reward_request['status'] != 'pending':
+            raise HTTPException(409, 'Deze beloningsaanvraag is al afgehandeld.')
+        if body.action == 'approve':
+            balance = db.execute(
+                'SELECT COALESCE(SUM(amount),0) FROM point_transactions WHERE member_id=?',
+                (reward_request['member_id'],),
+            ).fetchone()[0]
+            reserved_other = db.execute(
+                'SELECT COALESCE(SUM(cost),0) FROM reward_requests WHERE member_id=? AND status=? AND id!=?',
+                (reward_request['member_id'], 'pending', reward_request_id),
+            ).fetchone()[0]
+            if balance - reserved_other < reward_request['cost']:
+                raise HTTPException(409, 'Het saldo is niet meer toereikend om deze aanvraag goed te keuren.')
+            db.execute(
+                '''INSERT INTO point_transactions
+                   (id,member_id,amount,reason,source_key,related_id)
+                   VALUES (?,?,?,?,?,?)''',
+                (
+                    str(uuid.uuid4()), reward_request['member_id'], -reward_request['cost'],
+                    'reward-redemption', f'reward-request:{reward_request_id}:redemption', reward_request_id,
+                ),
+            )
+        status = 'approved' if body.action == 'approve' else 'rejected'
+        db.execute(
+            'UPDATE reward_requests SET status=?,resolved_at=CURRENT_TIMESTAMP WHERE id=?',
+            (status, reward_request_id),
+        )
+        db.execute(
+            'INSERT INTO history(kind,entity_id,body) VALUES (?,?,?)',
+            ('reward-requests', reward_request_id, json.dumps({
+                'member_id': reward_request['member_id'], 'member_name': reward_request['member_name'],
+                'reward_id': reward_request['reward_id'], 'reward_name': reward_request['reward_name'],
+                'cost': reward_request['cost'], 'status': status,
+            })),
+        )
+        result = {'ok': True, 'id': reward_request_id, 'status': status}
         db.execute('INSERT INTO requests VALUES (?,?,?)', (body.request_id, fingerprint, json.dumps(result)))
         return result
 
@@ -296,7 +500,6 @@ def get_settings():
     with connect() as db:
         cfg = settings(db)
     cfg['immich_configured'] = bool(cfg.pop('immich_key', ''))
-    cfg['ha_configured'] = bool(cfg.pop('ha_token', ''))
     for a in cfg['caldav']:
         a['configured'] = bool(a.pop('password', ''))
     return cfg
@@ -310,26 +513,20 @@ def save_settings(body: dict):
             raise HTTPException(409, 'Instellingen zijn intussen gewijzigd. Open beheer opnieuw.')
         try:
             ZoneInfo(body.get('timezone', 'Europe/Amsterdam'))
-            cfg = {k: body.get(k, old[k]) for k in ('timezone', 'ha_url', 'immich_url', 'albums', 'slide_seconds')}
-            for field in ('ha_url', 'immich_url'):
-                if cfg[field]:
-                    cfg[field] = integrations.valid_url(cfg[field])
+            cfg = {k: body.get(k, old[k]) for k in ('timezone', 'ha_url', 'ha_dashboard', 'immich_url', 'albums', 'slide_seconds')}
+            if cfg['ha_url']:
+                cfg['ha_url'] = integrations.valid_url(cfg['ha_url'])
+                parsed = urlsplit(cfg['ha_url'])
+                if parsed.path not in ('', '/') or parsed.query or '?' in cfg['ha_url'] or '#' in cfg['ha_url']:
+                    raise ValueError('Gebruik het Home Assistant-basisadres zonder dashboardpad.')
+                _ = parsed.port
+            if not isinstance(cfg['ha_dashboard'], str) or len(cfg['ha_dashboard']) > 500 or not re.fullmatch(r'/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*/?', cfg['ha_dashboard']):
+                raise ValueError('Ongeldig Home Assistant-dashboardpad.')
+            if cfg['immich_url']:
+                cfg['immich_url'] = integrations.valid_url(cfg['immich_url'])
             if type(cfg['slide_seconds']) is not int or not 5 <= cfg['slide_seconds'] <= 300:
                 raise ValueError('Wisseltijd moet tussen 5 en 300 seconden liggen.')
             cfg['immich_key'] = integrations.endpoint_secret(old['immich_url'], cfg['immich_url'], old['immich_key'], body.get('immich_key'))
-            cfg['ha_token'] = body.get('ha_token') or old['ha_token']
-            if body.get('ha_clear_token') is True:
-                cfg['ha_token'] = ''
-            if not isinstance(cfg['ha_token'], str) or len(cfg['ha_token']) > 8192 or any(c.isspace() for c in cfg['ha_token']):
-                raise ValueError('Ongeldig HA-token')
-            if cfg['ha_token']:
-                cfg['ha_url'] = home_assistant.base_url(cfg['ha_url'])
-                if cfg['ha_url'] != old['ha_url'] and old['ha_token'] and not body.get('ha_token'):
-                    raise ValueError('Voer bij een ander HA-adres het token opnieuw in')
-            cfg['ha_entities'] = body.get('ha_entities', old['ha_entities'])
-            if not isinstance(cfg['ha_entities'], list) or len(cfg['ha_entities']) > 200 or any(not isinstance(e, str) or not home_assistant.ENTITY.fullmatch(e) for e in cfg['ha_entities']):
-                raise ValueError('Ongeldige entiteiten')
-            cfg['ha_entities'] = list(dict.fromkeys(cfg['ha_entities']))
             if not isinstance(cfg['albums'], list) or any(not isinstance(a, str) or not _uuid(a) for a in cfg['albums']):
                 raise ValueError('Ongeldige albumselectie.')
             cfg['caldav'] = []
@@ -371,30 +568,6 @@ def _uuid(value):
         return True
     except (ValueError, TypeError, AttributeError):
         return False
-
-@app.post('/api/admin/ha/discover', dependencies=[Depends(admin)])
-def discover_ha(body: dict):
-    with connect() as db:
-        cfg = settings(db)
-    url = body.get('url', cfg['ha_url'])
-    token = body.get('token') or (cfg['ha_token'] if url.rstrip('/') == cfg['ha_url'].rstrip('/') else '')
-    return home_assistant.discover({**cfg, 'ha_url': url, 'ha_token': token})
-
-@app.get('/api/ha/states')
-def ha_states():
-    with connect() as db:
-        cfg = settings(db)
-    return {'configured': bool(cfg['ha_url'] and cfg['ha_token']), 'entities': home_assistant.selected_states(cfg)}
-
-class HAControl(BaseModel):
-    entity_id: str = Field(max_length=200)
-    action: str = Field(max_length=30)
-
-@app.post('/api/ha/control')
-def ha_control(body: HAControl):
-    with connect() as db:
-        cfg = settings(db)
-    return home_assistant.control(cfg, body.entity_id, body.action)
 
 @app.post('/api/admin/discover/{service}', dependencies=[Depends(admin)])
 def discover(service: str, body: dict):

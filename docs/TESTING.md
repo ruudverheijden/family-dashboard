@@ -21,7 +21,7 @@ De standaardrun ontdekt tests onder `tests/`, met uitzondering van `e2e/`. Allee
 
 De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, weekdagen, individuele en gezamenlijke uitvoering, archivering, invoergrenzen voor stappen/punten/tijdvensters, datum-normalisatie, Home Assistant-selectie en hergebruik van geheimen. Twee aanvullende API-regressies controleren dat zowel opslaan als ontdekken een gewijzigd CalDAV- of Immich-adres weigert voordat een opgeslagen geheim wordt doorgestuurd. Bij weigering blijft de eerdere configuratie intact.
 
-**Nieuwste backendrun: 63 geslaagd** (35 nieuwe unitgevallen, 26 bestaande backendgevallen en 2 nieuwe API-regressies). De eerder gerapporteerde browsermatrix staat hieronder afzonderlijk.
+**Nieuwste backendrun na de beloningsimplementatie: 68 geslaagd** (33 unit- en 35 API/backendtests). De eerdere browsermatrix staat hieronder afzonderlijk.
 
 ## Koppeling aan requirements
 
@@ -34,6 +34,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 | AG-02–08 | Bestaande backendtests voor CalDAV-herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
 | TK-01–04 | Taak met beschrijving/punten, individuele en gezamenlijke toewijzing, dagelijkse uitvoering, voltooien/heropenen, herladen, historie en gezinsfilter |
 | RT-01–04 | Geordende stappen, voortgang persistent na herladen, volgende dag leeg en vorige dag ongewijzigd; backendtests voor conflict/snapshots/inhaalperiode |
+| BEL-01–05 | Punten per taakuitvoering en volledig afgeronde routine, tegenboeking bij ongedaan maken, unieke transacties, gedeelde taakbeloning per verantwoordelijke, gereserveerde aanvraag, beheergoedkeuring/-afwijzing en idempotente herhaling |
 | BO-01–08 | Toevoegen, details, bewerken, verwijderen, afvinken/herstellen/opruimen; tweede browser ziet toevoeging binnen 2 seconden; conflict bewaart invoer; verloren antwoord en herhaling veroorzaken geen duplicaat |
 | HA-01, HA-03–05 | Fixture voor geselecteerde lampbediening en alleen-lezen sensor; geïsoleerde fout; backendtests voor token, selectie en toegestane acties |
 | IM-02–06, IM-09–12 | Foto vooruit/achteruit/pauze, standaard contain, niet-beschikbare afbeeldingen, navigatie, fotoaanraking, inactiviteit en guards voor formulier/concept/routine |
@@ -48,7 +49,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 - WebKit is een browserengine-test, geen test op een echte iPhone/Safari-installatie. Viewports vervangen geen fysiek touchscreen.
 - De 2-secondenassertie is een functionele grens op een lokale testmachine, geen netwerk-SLA. Geen 72-uurs duurtest, 200-ms responsbenchmark of minimale RAM/CPU-meting.
 - Dockerstart, amd64/arm64, containervervanging en herstel naar een Docker-volume blijven aparte acceptatiepunten; de CI-configuratie is geen bewijs dat die workflow al op GitHub is uitgevoerd.
-- CalDAV-/albumontdekking via echte servers, EXIF-oriëntatie, grote datasets, publieke repositorycontrole en alle P1-functies vallen buiten deze browserrun.
+- CalDAV-/albumontdekking via echte servers, EXIF-oriëntatie, grote datasets, publieke repositorycontrole en de overige P1-functies vallen buiten deze browserrun.
 
 ## Resultaat van deze uitvoering — 30 oktober 2026
 
@@ -65,3 +66,10 @@ De totale browsermatrix duurde 80,50 seconden. Playwright 1.64.1, Python 3.14, m
 **Gevonden en hersteld:** de mobiele subnavigatie overschreef de minimale knopbreedte met nul; Taken was circa 38,7 pixels breed. De minimummaat is nu 48 pixels. De regressietest controleert de maat en behoud van horizontale passing in beide mobiele oriëntaties.
 
 Firefox blijft in CI opgenomen voor uitvoering op Linux. De lokale Firefox-opstartfout is geen bewijs van een fout in de app en ook geen geslaagde browseracceptatie.
+
+## Update na implementatie BEL-01–05
+
+- Backend en unittests: **68/68 geslaagd**.
+- Chromium: **29/29 end-to-endtests geslaagd**.
+- WebKit: de nieuwe beloningsaanvraag-/goedkeuringsflow **1/1 geslaagd**; de volledige WebKit-suite is niet opnieuw uitgevoerd.
+- Firefox is voor deze update niet opnieuw uitgevoerd.

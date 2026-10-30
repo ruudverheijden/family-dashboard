@@ -38,7 +38,7 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 - Docker-daemon was niet beschikbaar. Compose is syntactisch gecontroleerd, maar containerbuild/start, persistentie bij containervervanging en herstel naar een Docker-volume zijn lokaal niet uitgevoerd.
 - Linux amd64- en arm64-builds staan in GitHub Actions. De workflow is nog niet op GitHub uitgevoerd; geen vooraf gebouwde images gepubliceerd.
 - Echte CalDAV-, Immich- en HA-servers waren niet beschikbaar. Bibliotheek- en mocktests vervangen geen interoperabiliteitstest.
-- Home Assistant-iframe: echte login, cookies, frameheaders, mixed content, mobiele bediening en rechtenbeperking moeten met de eigen installatie worden gecontroleerd. Een directe HA-client als fallback is nog niet gebouwd.
+- Home Assistant-iframe: echte login, cookies, frameheaders, mixed content, mobiele bediening en rechtenbeperking moeten met de eigen installatie worden gecontroleerd. Een directe link naar hetzelfde dashboard is beschikbaar als iframe-weergave niet werkt.
 - Immich-oriëntatie en previewkwaliteit hangen af van de previews die Immich levert. Geen echte foto-/EXIF-test uitgevoerd.
 - Nog geen 72-uurs duurtest of gemeten 200-ms/2-seconden prestatierapport, en geen meting van minimale RAM/CPU-hostvereisten.
 - Geen volledige browsermatrix. De UI gebruikt moderne CSS Grid, dialog, fetch en Intl. Recente Chrome/Edge/Firefox/Safari zijn beoogd; alleen de genoemde in-app browser is daadwerkelijk gecontroleerd. Geen toezegging voor oude webviews of kioskbrowsers.
@@ -64,7 +64,7 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 
 - CalDAV alleen-lezen; synchronisatievenster 90 dagen terug tot circa één jaar vooruit.
 - Afzonderlijke uitvoeringen worden bij bekijken alvast vastgelegd, ook voor toekomstige datums. Sjabloonwijzigingen herschrijven deze niet. Inhalen van verlopen uitvoeringen is begrensd op twee jaar.
-- Historie bevat mutaties, geen individuele actoridentiteit: dagelijks profielgebruik is geen authenticatie. Punten zijn metadata; P1-beloningen zijn niet gebouwd.
+- Historie bevat mutaties en een puntenledger met herleidbare transacties, maar geen individuele actoridentiteit: dagelijks profielgebruik is geen authenticatie.
 - Geen aparte achterstallige-takenlijst, geen routinevensters over middernacht en geen offline schrijfbuffer.
 - Integratie- en beheersessiestaat deels proceslokaal: één applicatieproces/worker vereist.
 - Integratiegeheimen staan onversleuteld in het beschermde servervolume; toegang tot host en back-ups is vertrouwelijk.
@@ -77,13 +77,19 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 1. Start Compose en controleer `/api/health`, herstart en vervang daarna de container met behoud van volumes.
 2. Configureer één echt account per integratie; test wijzigingen, uitzonderingen, verwijderingen en uitval.
 3. Open op telefoon en gedeeld scherm; test gelijktijdige edits en afvinken.
-4. Test HA-login en beperkte rechten op het daadwerkelijke scherm; bepaal daarna of een alternatieve client nodig is.
+4. Test het ingesloten HA-dashboard en de aanmelding op het daadwerkelijke scherm; controleer ook de frameheaders en browser-cookie-instellingen.
 5. Test Immich-albumintrekking, een kapotte foto, EXIF-rotatie, shuffle en inactiviteit tijdens invoer.
 6. Herstel een back-up naar een leeg Docker-volume. Draai vervolgens de 72-uurs duurtest en leg geheugen-/latencymetingen vast.
 
 
-## Update: Home Assistant-tokenauthenticatie
+## Home Assistant-dashboard
 
-De eerdere iframe-implementatie is vervangen door een eigen HA-entiteitenweergave met een server-side Long-Lived Access Token. De eerdere opmerkingen over iframe-login, cookies, frameheaders en de ontbrekende directe client zijn daarmee vervallen. Het originele Lovelace-dashboard wordt niet weergegeven.
+Het HA-tabblad laadt het ingestelde Home Assistant-dashboard in een iframe; Samen haalt geen entiteiten op en rendert ze niet zelf. De browserproef bevestigt dat het ingestelde dashboardpad wordt gebruikt en dat er geen HA-entiteiten-API wordt aangeroepen. Deze proef gebruikt een nagebootste HA-pagina. Een echte HA-server was niet beschikbaar om login/cookies en frameheaders te verifiëren; controleer die instellingen bij ingebruikname. De link onder het dashboard opent dezelfde HA-pagina rechtstreeks in een nieuw tabblad.
 
-19 applicatietests slagen, inclusief vier nieuwe HA-tests: geheimen afschermen/behouden/verwijderen, Bearer-authenticatie en entiteit-/actiecontrole, geschoonde foutmelding bij een geweigerd token, en opnieuw invoeren van het token bij een gewijzigd serveradres. Deze tests gebruiken een nagebootste HA-server. Een echte HA-server/token was niet beschikbaar voor een integratietest.
+## Update: punten en beloningen
+
+BEL-01 t/m BEL-05 zijn geïmplementeerd. Voltooide taken boeken de ingestelde punten per uitvoering; een gedeelde taak boekt punten voor ieder toegewezen gezinslid. Een routine boekt uitsluitend punten wanneer alle stappen voltooid zijn, niet per onderliggende stap. Een voltooiing ongedaan maken maakt een herleidbare tegenboeking; een nieuwe voltooiing is een nieuwe transactie. SQLite-schema versie 1 migreert bij starten naar versie 2.
+
+De beloningscatalogus wordt door een beheerder beheerd. Een gezinslid kan vanuit het tabblad Beloningen een aanvraag indienen; de punten worden gereserveerd zolang deze openstaat en pas bij beheergoedkeuring afgeschreven. Afwijzen geeft de reservering vrij. Aanvragen, besluiten en puntentransacties worden bewaard; request-ID’s en unieke ledger-bronnen voorkomen dubbele mutaties.
+
+Dagelijkse profielkeuze blijft een filter en geen authenticatie. De nieuwe API-tests en browserflow controleren transacties, herroeping, reservering, idempotentie, catalogusbeheer en oudergoedkeuring. Echte gezinsacceptatie en gelijktijdige fysieke apparaten blijven onderdeel van de bredere acceptatieronde.

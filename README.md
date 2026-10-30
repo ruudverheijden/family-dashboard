@@ -11,14 +11,15 @@ Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en
 - Vaste hoofdnavigatie: Kalender, Home Assistant en Immich; Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
 - Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
 - CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen dag/weekagenda met terugkerende afspraken, uitzonderingen en tijdzones.
-- Taken met beschrijving, datum, icoon, optionele punten, dag/weekherhaling en individuele of gezamenlijke uitvoering.
-- Routines met geordende stappen, personen, weekdagen en tijdvenster. Voortgang blijft server-side bewaard; gemiste stappen blijven open.
+- Taken met beschrijving, datum, icoon, punten per uitvoering, dag/weekherhaling en individuele of gezamenlijke uitvoering.
+- Routines met geordende stappen, personen, weekdagen en tijdvenster. Punten worden één keer toegekend als alle stappen af zijn; voortgang blijft server-side bewaard en gemiste stappen blijven open.
 - Gedeelde boodschappen met hoeveelheid, notitie, bewerken, afvinken, herstellen en opruimen.
 - Automatische verversing elke 1,5 seconde; versienummers voorkomen stil overschrijven. Dubbele verzoeken worden herkend.
 - Beveiligd beheer, server-side integratiegeheimen, historie, SQLite-back-up en healthcheck.
-- Home Assistant-entiteitenweergave met server-side tokenauthenticatie en geselecteerde bediening. Immich-fotolijst uit geselecteerde albums, pauze/vorige/volgende, voorladen, begrensde servercache en schermspecifieke voorkeuren.
+- Puntensaldi en herleidbare transacties per gezinslid, beheerbare beloningen, aanvragen met gereserveerde punten en oudergoedkeuring. Een voltooiing ongedaan maken boekt de bijbehorende punten terug.
+- Home Assistant-dashboard rechtstreeks ingesloten vanuit het zelfgekozen HA-dashboardpad. Immich-fotolijst uit geselecteerde albums, pauze/vorige/volgende, voorladen, begrensde servercache en schermspecifieke voorkeuren.
 
-Punten zijn voorlopig informatief: saldi en beloningen behoren tot P1. Recepten en maaltijdplanning zijn niet opgenomen.
+Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filter en geen authenticatie. Alleen een beheerder kan de beloningscatalogus beheren en aanvragen goedkeuren. Recepten en maaltijdplanning zijn niet opgenomen.
 
 ## Installeren met Docker Compose
 
@@ -62,20 +63,14 @@ Afspraken worden niet lokaal aangemaakt of gewijzigd; CalDAV blijft de bron. Raa
 
 ### Home Assistant
 
-De HA-koppeling gebruikt een **Long-Lived Access Token**, geen Home Assistant-wachtwoord. Het beheerwachtwoord van Samen blijft alleen nodig om de configuratie te beschermen.
+Het HA-tabblad toont je Home Assistant-dashboard rechtstreeks in Samen. De app haalt geen HA-entiteiten op en rendert ze niet zelf; je maakt en beheert de inhoud en bediening volledig in Home Assistant.
 
-1. Maak in je Home Assistant-profiel een Long-Lived Access Token aan, bij voorkeur voor een apart niet-beheeraccount.
-2. Open **Beheer → Home Assistant · token** en vul het basisadres in, bijvoorbeeld `http://homeassistant.local:8123`, zonder dashboardpad of `/api`.
-3. Plak het token en kies **Verbinding testen en entiteiten ophalen**.
-4. Selecteer de entiteiten voor het gedeelde scherm en sla op.
+1. Open **Beheer → Home Assistant-dashboard**.
+2. Vul het HA-serveradres in, bijvoorbeeld `http://homeassistant.local:8123` (zonder `/api` of dashboardpad).
+3. Stel het dashboardpad in. Standaard is dit `/lovelace/0`; voor een eigen dashboard gebruik je het pad uit Home Assistant, bijvoorbeeld `/dashboard-gezinsdashboard/overzicht`.
+4. Sla de instellingen op en open de tab **Home Assistant**.
 
-Het HA-tabblad toont een eigen entiteitenoverzicht. Verlichting, schakelaars en input-booleans ondersteunen aan/uit; overige geselecteerde entiteiten zijn alleen-lezen. Er wordt geen Lovelace-dashboard ingesloten. De server controleert de selectie en toegestane acties bij iedere opdracht. Er is geen algemene serviceproxy voor bijvoorbeeld sloten, alarmen of beheeracties.
-
-Het token wordt server-side in SQLite bewaard en alleen als `Authorization: Bearer …` naar het ingestelde HA-adres gestuurd. De instellingen-API geeft alleen terug of een token is ingesteld. Leeg laten behoudt het token; **Opgeslagen HA-token verwijderen** trekt de koppeling lokaal in. Om het token ook bij HA in te trekken, verwijder je het daar in je profiel. Bij een ander serveradres moet je het token opnieuw invoeren.
-
-Status wordt elke vijf seconden vernieuwd zolang het HA-tabblad zichtbaar is. Een verlopen/ingetrokken token of verbindingsfout wordt binnen dit tabblad getoond. De overige onderdelen blijven bruikbaar. De API gebruikt geen redirects. Een eerder opgeslagen dashboardadres moet worden vervangen door het basisadres voordat je tokenauthenticatie inschakelt.
-
-Gebruik op niet-vertrouwde netwerken HTTPS voor zowel Samen als HA. Een token erft de rechten van zijn HA-gebruiker; de geselecteerde bediening is bovendien beschikbaar aan iedereen die het gedeelde dashboard kan bereiken. Zie de [officiële REST API-documentatie](https://developers.home-assistant.io/docs/api/rest/).
+Je browser moet het ingestelde HA-adres kunnen bereiken en zo nodig al bij Home Assistant zijn aangemeld. Het HA-dashboard wordt binnen een iframe getoond; de browser- en HA-configuratie moeten insluiten toestaan. De link onder het dashboard opent dezelfde pagina ook rechtstreeks in een nieuw tabblad. Gebruik op niet-vertrouwde netwerken HTTPS voor zowel Samen als Home Assistant.
 
 ### Immich
 
@@ -87,7 +82,7 @@ Onder **Dit scherm instellen** kun je een inactiviteitstimer aanzetten. Standaar
 
 ## Uitvoeringen, conflicten en historie
 
-Sjablonen en uitvoeringen zijn aparte records. Een achtergrondtaak maakt verlopen uitvoeringen aan tot vandaag (inhaalperiode maximaal twee jaar); niets wordt automatisch voltooid. Een gekozen datum maakt ook de bijbehorende uitvoeringen aan. Elke uitvoering bevat een snapshot van het sjabloon. Bewerken of archiveren wijzigt bestaande uitvoeringen niet, ook niet wanneer je een toekomstige datum al hebt bekeken. Dit is een bewuste, zichtbare eerste-versiekeuze.
+Sjablonen en uitvoeringen zijn aparte records. Een achtergrondtaak maakt verlopen uitvoeringen aan tot vandaag (inhaalperiode maximaal twee jaar); niets wordt automatisch voltooid. Een gekozen datum maakt ook de bijbehorende uitvoeringen aan. Elke uitvoering bevat een snapshot van het sjabloon. Bewerken of archiveren wijzigt bestaande uitvoeringsgegevens, planning en historie niet, ook niet wanneer je een toekomstige datum al hebt bekeken. In het takenoverzicht worden wel de actuele titel, het pictogram, de beschrijving en punten van het sjabloon getoond, zodat een bewerkte taak direct herkenbaar is.
 
 Een routinevenster is een aanwijzing, geen blokkering: je kunt een stap later alsnog afvinken. Vensters over middernacht worden in deze versie niet ondersteund. Niet-afgeronde taken blijven op hun eigen datum zichtbaar; er is nog geen apart overzicht voor alle achterstallige taken.
 
@@ -97,7 +92,7 @@ Bij verbindingsverlies wordt geen succesvolle opslag gemeld. Er is geen offline 
 
 ## Back-up en herstel
 
-De SQLite-back-up bevat gezinsgegevens, uitvoeringen, historie en integratiegeheimen. Bewaar hem privé en versleuteld; neem ook `.env` en eventuele aangepaste Compose-configuratie mee. Foto’s in de cache hoeven niet te worden geback-upt.
+De SQLite-back-up bevat gezinsgegevens, uitvoeringen, puntenledger, beloningsaanvragen, historie en integratiegeheimen. Bewaar hem privé en versleuteld; neem ook `.env` en eventuele aangepaste Compose-configuratie mee. Foto’s in de cache hoeven niet te worden geback-upt.
 
 Consistente online back-up (gebruik een nieuwe bestandsnaam per back-up):
 
@@ -125,9 +120,9 @@ Gebruik voor herstel een leeg datavolume. Behoud de oude installatie tot je de n
 
 Maak eerst een back-up. Vervang de broncode door de gewenste versie en voer `docker compose up -d --build` uit. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
 
-Databaseschema: versie 1 via `PRAGMA user_version`. De applicatie initialiseert ontbrekende tabellen en weigert een database met een nieuwere schemaversie. Er zijn nog geen migraties vanaf een eerdere productierelease. Downgraden na toekomstige migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
+Databaseschema: versie 2 via `PRAGMA user_version`; bestaande versie-1-databases krijgen bij starten automatisch de tabellen voor punten en beloningsaanvragen. De applicatie weigert een database met een nieuwere schemaversie. Downgraden na migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
 
-Lokaal ontwikkelen (Python 3.12+, in de oplevering getest met Python 3.14):
+Lokaal ontwikkelen (Python 3.12+, in de oplevering getest met Python 3.14). De app leest `ADMIN_PASSWORD` automatisch uit `.env` als die niet al in de procesomgeving staat:
 
 ```sh
 python3 -m venv .venv
@@ -136,6 +131,8 @@ export ADMIN_PASSWORD='kies-een-uniek-lokaal-wachtwoord'
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
 .venv/bin/python -m pytest -q
 ```
+
+De `export`-regel is alleen nodig als je geen `.env` gebruikt of tijdelijk een andere waarde wilt instellen.
 
 De uitgebreide Playwright-acceptatietests, browsermatrix en koppeling aan de oorspronkelijke requirements staan in [docs/TESTING.md](docs/TESTING.md). Deze tests draaien met afzonderlijke tijdelijke gegevens.
 
