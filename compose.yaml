@@ -1,0 +1,26 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Stel ADMIN_PASSWORD in via .env}
+      TZ: ${TZ:-Europe/Amsterdam}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CACHE_MB: ${CACHE_MB:-128}
+      DATA_DIR: /data
+      CACHE_DIR: /cache
+    volumes:
+      - family-data:/data
+      - family-cache:/cache
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  family-data:
+  family-cache:

@@ -1,0 +1,25 @@
+name: Browseracceptatie
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-test.txt
+      - run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - run: python -m pytest tests/e2e --browser ${{ matrix.browser }} --tracing retain-on-failure --screenshot only-on-failure --junitxml=test-results/results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 14

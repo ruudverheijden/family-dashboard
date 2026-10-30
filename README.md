@@ -1,0 +1,158 @@
+# Samen · lokaal gezinsdashboard
+
+Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en herinneringen. Zelf te hosten, zonder abonnement, NAS-afhankelijkheid of externe frontenddiensten.
+
+**Versie 0.1.0 — eerste werkende ontwikkelversie.** De lokale gezinsplanner is bruikbaar. Integratieadapters zijn geïmplementeerd en deels met fixtures getest; een volledige P0-acceptatie op echte CalDAV-, Home Assistant- en Immich-installaties staat nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en de [oorspronkelijke requirements](docs/REQUIREMENTS.md).
+
+![Samen gezinsdashboard](docs/screenshot.png)
+
+## Wat werkt
+
+- Vaste hoofdnavigatie: Kalender, Home Assistant en Immich; Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
+- Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
+- CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen dag/weekagenda met terugkerende afspraken, uitzonderingen en tijdzones.
+- Taken met beschrijving, datum, icoon, optionele punten, dag/weekherhaling en individuele of gezamenlijke uitvoering.
+- Routines met geordende stappen, personen, weekdagen en tijdvenster. Voortgang blijft server-side bewaard; gemiste stappen blijven open.
+- Gedeelde boodschappen met hoeveelheid, notitie, bewerken, afvinken, herstellen en opruimen.
+- Automatische verversing elke 1,5 seconde; versienummers voorkomen stil overschrijven. Dubbele verzoeken worden herkend.
+- Beveiligd beheer, server-side integratiegeheimen, historie, SQLite-back-up en healthcheck.
+- Home Assistant-entiteitenweergave met server-side tokenauthenticatie en geselecteerde bediening. Immich-fotolijst uit geselecteerde albums, pauze/vorige/volgende, voorladen, begrensde servercache en schermspecifieke voorkeuren.
+
+Punten zijn voorlopig informatief: saldi en beloningen behoren tot P1. Recepten en maaltijdplanning zijn niet opgenomen.
+
+## Installeren met Docker Compose
+
+Benodigd: Docker Engine met Compose v2 op een Linux amd64- of arm64-host. De Dockerfile bouwt vanuit de officiële multi-architectuur Python-image. Architectuurbuilds staan in CI, maar zijn in deze opleveromgeving niet uitgevoerd: Docker Engine draaide hier niet. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de host nodig.
+
+1. Kopieer deze projectmap naar de server (of clone de repository zodra die is gepubliceerd).
+2. Kopieer `.env.example` naar `.env`. Vervang `ADMIN_PASSWORD` door een eigen wachtwoord. Pas eventueel `PORT` aan.
+3. Start in de projectmap:
+
+   ```sh
+   docker compose up -d --build
+   docker compose ps
+   ```
+
+4. Open `http://<serveradres>:8080` in een browser (of de ingestelde poort). Open de beheerknop rechtsboven, meld je aan en voeg gezinsleden toe. De app start leeg: geen fictief gezin en geen voorbeeldafspraken in je echte database.
+
+De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Gebruik deze versie op een vertrouwd thuisnetwerk; stel geen port-forward in. Een internetverbinding is alleen nodig voor installatie/updates of wanneer de gekozen integraties extern draaien. Lokale taken, routines en boodschappen werken zonder internet zolang de server bereikbaar is.
+
+## Configuratie
+
+| Instelling | Plaats | Betekenis |
+|---|---|---|
+| `ADMIN_PASSWORD` | `.env` | Beheerwachtwoord; wijzigen vereist containerherstart |
+| `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
+| `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
+| Tijdzone | Beheer | Functionele agenda-/uitvoeringstijdzone, standaard Europe/Amsterdam |
+| `COOKIE_SECURE` | `.env` | `true` bij uitsluitend HTTPS; standaard `false` voor lokaal HTTP |
+| `CACHE_MB` | `.env` | Bovengrens vervangbare fotocache; standaard 128 MB |
+| CalDAV, HA en Immich | Beheer | Gezamenlijke instellingen, persistent in SQLite |
+| Inactiviteit, shuffle, uitsnijden | Dit scherm instellen | Alleen deze browser, in localStorage |
+
+De volumes `family-data` en `family-cache` bevatten respectievelijk database/configuratie en vervangbare foto’s. Compose geeft ze een projectprefix. Voor eigen opslagpaden kunnen de volumemounts worden gewijzigd; de container draait als UID/GID 10001 en moet daar kunnen schrijven. Gebruik een lokale schijf voor SQLite, geen databasebestand op SMB/NFS.
+
+### CalDAV
+
+Open **Beheer → Account toevoegen**, vul een CalDAV-serveradres, gebruikersnaam en wachtwoord in en kies **Agenda’s ophalen**. Selecteer agenda’s, wijs een gezinslid toe en sla op. Meerdere accounts zijn mogelijk. Bij hetzelfde serveradres behoudt een leeg wachtwoord het bestaande geheim. Vul bij wijziging van het CalDAV-serveradres opnieuw het wachtwoord in; verwijderen van het account verwijdert ook de gekoppelde lokale agenda’s.
+
+Synchronisatie gebeurt bij het starten en daarna elke twee minuten (plus looptijd), of met **Nu synchroniseren**. De app vervangt de lokale kopie pas nadat alle geselecteerde agenda’s van dat account succesvol zijn opgehaald. Wijzigingen en verwijderingen worden zo zonder extra kopieën verwerkt. Bij fouten blijft de vorige kopie staan en worden fout en laatste succesmoment getoond. Het venster loopt van 90 dagen terug tot ongeveer één jaar vooruit. Agenda’s daarbuiten worden niet geladen.
+
+Afspraken worden niet lokaal aangemaakt of gewijzigd; CalDAV blijft de bron. Raadpleeg de [python-caldav zoekdocumentatie](https://caldav.readthedocs.io/stable/caldav/collection.html) voor het gebruikte protocolpad. De gebruikte bibliotheek verwerkt herhalingen lokaal met `recurring-ical-events`.
+
+### Home Assistant
+
+De HA-koppeling gebruikt een **Long-Lived Access Token**, geen Home Assistant-wachtwoord. Het beheerwachtwoord van Samen blijft alleen nodig om de configuratie te beschermen.
+
+1. Maak in je Home Assistant-profiel een Long-Lived Access Token aan, bij voorkeur voor een apart niet-beheeraccount.
+2. Open **Beheer → Home Assistant · token** en vul het basisadres in, bijvoorbeeld `http://homeassistant.local:8123`, zonder dashboardpad of `/api`.
+3. Plak het token en kies **Verbinding testen en entiteiten ophalen**.
+4. Selecteer de entiteiten voor het gedeelde scherm en sla op.
+
+Het HA-tabblad toont een eigen entiteitenoverzicht. Verlichting, schakelaars en input-booleans ondersteunen aan/uit; overige geselecteerde entiteiten zijn alleen-lezen. Er wordt geen Lovelace-dashboard ingesloten. De server controleert de selectie en toegestane acties bij iedere opdracht. Er is geen algemene serviceproxy voor bijvoorbeeld sloten, alarmen of beheeracties.
+
+Het token wordt server-side in SQLite bewaard en alleen als `Authorization: Bearer …` naar het ingestelde HA-adres gestuurd. De instellingen-API geeft alleen terug of een token is ingesteld. Leeg laten behoudt het token; **Opgeslagen HA-token verwijderen** trekt de koppeling lokaal in. Om het token ook bij HA in te trekken, verwijder je het daar in je profiel. Bij een ander serveradres moet je het token opnieuw invoeren.
+
+Status wordt elke vijf seconden vernieuwd zolang het HA-tabblad zichtbaar is. Een verlopen/ingetrokken token of verbindingsfout wordt binnen dit tabblad getoond. De overige onderdelen blijven bruikbaar. De API gebruikt geen redirects. Een eerder opgeslagen dashboardadres moet worden vervangen door het basisadres voordat je tokenauthenticatie inschakelt.
+
+Gebruik op niet-vertrouwde netwerken HTTPS voor zowel Samen als HA. Een token erft de rechten van zijn HA-gebruiker; de geselecteerde bediening is bovendien beschikbaar aan iedereen die het gedeelde dashboard kan bereiken. Zie de [officiële REST API-documentatie](https://developers.home-assistant.io/docs/api/rest/).
+
+### Immich
+
+Vul het basisadres **zonder `/api`** en een beperkte lees-API-sleutel in. Voer bij wijziging van het Immich-serveradres de API-sleutel opnieuw in. Kies **Albums ophalen**, selecteer expliciet de gewenste albums en sla op. Zonder selectie worden geen foto’s getoond. API-routes zijn gebaseerd op [albuminformatie](https://api.immich.app/endpoints/albums/getAlbumInfo) en [asset previews](https://api.immich.app/endpoints/assets/viewAsset); compatibiliteit met je geïnstalleerde Immich-versie moet worden gecontroleerd.
+
+De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke twee minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd.
+
+Onder **Dit scherm instellen** kun je een inactiviteitstimer aanzetten. Standaard is deze uit. Open formulieren, niet-opgeslagen boodschappen en het routinescherm verhinderen automatisch wisselen. Aanrakingen in de geïntegreerde HA-weergave tellen mee als activiteit.
+
+## Uitvoeringen, conflicten en historie
+
+Sjablonen en uitvoeringen zijn aparte records. Een achtergrondtaak maakt verlopen uitvoeringen aan tot vandaag (inhaalperiode maximaal twee jaar); niets wordt automatisch voltooid. Een gekozen datum maakt ook de bijbehorende uitvoeringen aan. Elke uitvoering bevat een snapshot van het sjabloon. Bewerken of archiveren wijzigt bestaande uitvoeringen niet, ook niet wanneer je een toekomstige datum al hebt bekeken. Dit is een bewuste, zichtbare eerste-versiekeuze.
+
+Een routinevenster is een aanwijzing, geen blokkering: je kunt een stap later alsnog afvinken. Vensters over middernacht worden in deze versie niet ondersteund. Niet-afgeronde taken blijven op hun eigen datum zichtbaar; er is nog geen apart overzicht voor alle achterstallige taken.
+
+Wijzigingen gebruiken versienummers. Bij een conflict wordt de wijziging afgewezen en de nieuwste staat opgehaald. Formulierinvoer blijft staan; sluit het formulier en open het item opnieuw voordat je de wijziging opnieuw toepast. Gelijktijdig dezelfde taak voltooien levert één statuswijziging en één historie-item op. Identieke opnieuw verstuurde verzoeken met hetzelfde verzoeknummer worden niet opnieuw uitgevoerd.
+
+Bij verbindingsverlies wordt geen succesvolle opslag gemeld. Er is geen offline wachtrij. Een verlopen beheersessie kan opnieuw worden geopend; bestaande integratiegeheimen komen niet naar de browser terug.
+
+## Back-up en herstel
+
+De SQLite-back-up bevat gezinsgegevens, uitvoeringen, historie en integratiegeheimen. Bewaar hem privé en versleuteld; neem ook `.env` en eventuele aangepaste Compose-configuratie mee. Foto’s in de cache hoeven niet te worden geback-upt.
+
+Consistente online back-up (gebruik een nieuwe bestandsnaam per back-up):
+
+```sh
+mkdir -p backups
+docker compose exec dashboard python -m app.backup /tmp/family-backup.db
+docker compose cp dashboard:/tmp/family-backup.db ./backups/family-backup.db
+```
+
+Het script gebruikt de SQLite Backup API en voert `integrity_check` uit. Het weigert een bestaand doelbestand te overschrijven. Bij een volgende back-up kies je een andere naam; `/tmp` wordt ook gewist bij containervervanging.
+
+Herstel naar een lege installatie, vanuit de projectmap:
+
+```sh
+docker compose stop dashboard
+docker compose run --rm --no-deps --user root \
+  -v "$(pwd)/backups:/restore:ro" dashboard \
+  python -c "import pathlib,shutil,os; p=pathlib.Path('/data/family.db'); assert not p.exists(), 'Doel is niet leeg'; shutil.copyfile('/restore/family-backup.db',p); os.chown(p,10001,10001); os.chmod(p,0o600)"
+docker compose up -d
+```
+
+Gebruik voor herstel een leeg datavolume. Behoud de oude installatie tot je de nieuwe hebt gecontroleerd. Controleer daarna gezinsleden, boodschappen, routinevoortgang en integraties. De applicatietest herstelt de back-up naar een lege map en verifieert gegevens én integratieconfiguratie. De Docker-volumeprocedure moet nog op een draaiende Docker-host worden uitgevoerd.
+
+## Updates en ontwikkeling
+
+Maak eerst een back-up. Vervang de broncode door de gewenste versie en voer `docker compose up -d --build` uit. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
+
+Databaseschema: versie 1 via `PRAGMA user_version`. De applicatie initialiseert ontbrekende tabellen en weigert een database met een nieuwere schemaversie. Er zijn nog geen migraties vanaf een eerdere productierelease. Downgraden na toekomstige migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
+
+Lokaal ontwikkelen (Python 3.12+, in de oplevering getest met Python 3.14):
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+export ADMIN_PASSWORD='kies-een-uniek-lokaal-wachtwoord'
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080 --reload
+.venv/bin/python -m pytest -q
+```
+
+De uitgebreide Playwright-acceptatietests, browsermatrix en koppeling aan de oorspronkelijke requirements staan in [docs/TESTING.md](docs/TESTING.md). Deze tests draaien met afzonderlijke tijdelijke gegevens.
+
+Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-toelatingslijst zijn proceslokaal. De frontend is gewone HTML/CSS/JavaScript zonder bundler of npm-build. De GitHub Actions-workflow voert applicatietests, JavaScript-syntaxcontrole en containerbuilds voor beide architecturen uit, plus een healthcheck op amd64.
+
+## Publieke distributie
+
+Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. Er is nog geen GitHub-repository aangemaakt of gepubliceerd. De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
+
+
+## Licentie
+
+Samen wordt aangeboden onder de [PolyForm Noncommercial License 1.0.0](LICENSE) (SPDX: `PolyForm-Noncommercial-1.0.0`). De officiële licentietekst is ongewijzigd opgenomen en wordt ook in de container meegeleverd.
+
+- Niet-commercieel gebruiken, aanpassen en delen is toegestaan onder de licentievoorwaarden, bijvoorbeeld voor een persoonlijk gezinsdashboard of hobbyproject.
+- Commercieel gebruik wordt door deze licentie niet toegestaan; daarvoor is een afzonderlijke toestemming van de rechthebbende nodig.
+- De licentie staat gebruik door de daarin genoemde organisaties, waaronder onderwijsinstellingen, liefdadigheidsorganisaties en overheidsinstellingen, expliciet toe ongeacht hun financieringsbron.
+- Bij verspreiding moeten de licentievoorwaarden of hun URL en eventuele `Required Notice:`-vermeldingen behouden blijven.
+
+De broncode is daarmee beschikbaar voor niet-commercieel gebruik; dit is geen onbeperkte open-sourcelicentie. De volledige [officiële voorwaarden](https://polyformproject.org/licenses/noncommercial/1.0.0) zijn leidend. Afhankelijkheden en andere componenten van derden behouden hun eigen licenties; deze projectlicentie wijzigt die niet.

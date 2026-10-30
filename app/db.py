@@ -1,0 +1,49 @@
+import json
+import os
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+
+DATA = Path(os.getenv('DATA_DIR', './data'))
+
+@contextmanager
+def connect():
+    DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+    db = sqlite3.connect(DATA / 'family.db', timeout=15)
+    (DATA / 'family.db').chmod(0o600)
+    db.row_factory = sqlite3.Row
+    db.execute('PRAGMA foreign_keys=ON')
+    try:
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+def init():
+    with connect() as db:
+        db.execute('PRAGMA journal_mode=WAL')
+        version = db.execute('PRAGMA user_version').fetchone()[0]
+        if version > 1:
+            raise RuntimeError('Database is nieuwer dan deze applicatie')
+        db.executescript('''
+        CREATE TABLE IF NOT EXISTS entities (kind TEXT, id TEXT, version INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(kind,id));
+        CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, kind TEXT, template_id TEXT, day TEXT, member TEXT, body TEXT, done TEXT NOT NULL DEFAULT '[]', version INTEGER NOT NULL DEFAULT 1);
+        CREATE TABLE IF NOT EXISTS schedule_cursor (id TEXT PRIMARY KEY, day TEXT);
+        CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY, at TEXT DEFAULT CURRENT_TIMESTAMP, kind TEXT, entity_id TEXT, body TEXT);
+        CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, fingerprint TEXT, response TEXT);
+        CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, body TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS calendars (id TEXT PRIMARY KEY, body TEXT);
+        CREATE TABLE IF NOT EXISTS status (id TEXT PRIMARY KEY, body TEXT);
+        PRAGMA user_version=1;
+        ''')
+        db.execute('INSERT OR IGNORE INTO settings VALUES (1,1,?)', (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15}),))
+
+def settings(db):
+    row = db.execute('SELECT * FROM settings WHERE id=1').fetchone()
+    return {'ha_token': '', 'ha_entities': [], **json.loads(row['body']), 'version': row['version']}
+
+def entities(db, kind):
+    return [{**json.loads(r['body']), 'id': r['id'], 'version': r['version']} for r in db.execute('SELECT * FROM entities WHERE kind=? ORDER BY rowid', (kind,))]
