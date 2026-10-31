@@ -76,7 +76,11 @@ def save(page):
 
 
 def section(page, name):
-    page.get_by_role('navigation', name='Gezinsplanner').get_by_role('button', name=name).click()
+    if name == 'Boodschappen':
+        page.get_by_role('navigation', name='Hoofdnavigatie').get_by_role('button', name=name, exact=True).click()
+    else:
+        page.get_by_role('navigation', name='Hoofdnavigatie').get_by_role('button', name='Kalender', exact=True).click()
+        page.get_by_role('navigation', name='Gezinsplanner').get_by_role('button', name=name).click()
 
 
 def grocery(page, name='Melk'):

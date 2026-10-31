@@ -8,6 +8,7 @@ import secrets
 import threading
 import time
 import uuid
+import httpx
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -91,7 +92,7 @@ class RequestBodyLimitMiddleware:
                 'Cache-Control': 'no-store',
                 'X-Content-Type-Options': 'nosniff',
                 'Referrer-Policy': 'no-referrer',
-                'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'",
+                'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src http: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'",
             },
         )
         await response(scope, receive, send)
@@ -140,7 +141,7 @@ async def security(request, call_next):
     response = await call_next(request)
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['Referrer-Policy'] = 'no-referrer'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src http: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
     if request.url.path.startswith('/api'):
         response.headers['Cache-Control'] = 'no-store'
     return response
@@ -330,16 +331,29 @@ def state(day: str | None = None, period: str = 'day'):
             raise HTTPException(422, 'Ongeldige datum.')
         if abs((date.fromisoformat(day) - datetime.now(ZoneInfo(cfg['timezone'])).date()).days) > 730:
             raise HTTPException(422, 'Kies een datum binnen twee jaar van vandaag.')
-        if period not in ('day', 'week'):
+        if period not in ('day', 'three-day', 'week'):
             raise HTTPException(422, 'Ongeldige agenda-periode.')
         selected_day = date.fromisoformat(day)
         start_day = selected_day - timedelta(days=selected_day.weekday()) if period == 'week' else selected_day
-        end_day = start_day + timedelta(days=6) if period == 'week' else start_day
+        if period == 'week':
+            end_day = start_day + timedelta(days=6)
+        elif period == 'three-day':
+            end_day = start_day + timedelta(days=2)
+        else:
+            end_day = start_day
         catch_up(db)
         current_day = start_day
         while current_day <= end_day:
             materialize(db, current_day.isoformat())
             current_day += timedelta(days=1)
+        statuses = {r['id']: json.loads(r['body']) for r in db.execute('SELECT * FROM status')}
+        for account in cfg['caldav']:
+            key = 'caldav:' + account['id']
+            status = statuses.setdefault(key, {'ok': False, 'message': 'Nog niet bijgewerkt', 'last_success': None})
+            status['calendars'] = [
+                {'name': selection.get('name') or 'Agenda'}
+                for selection in account.get('calendars', [])
+            ]
         return {
             'day': day,
             'members': entities(db, 'members'),
@@ -348,7 +362,7 @@ def state(day: str | None = None, period: str = 'day'):
             'groceries': entities(db, 'groceries'),
             'runs': read_runs(db, start_day.isoformat(), end_day.isoformat()),
             'events': [e for r in db.execute('SELECT body FROM calendars') for e in json.loads(r[0])],
-            'status': {r['id']: json.loads(r['body']) for r in db.execute('SELECT * FROM status')},
+            'status': statuses,
             'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds')} | {
                 'caldav_configured': bool(cfg['caldav']),
             },
@@ -729,6 +743,10 @@ def get_photo(asset_id: str):
         return Response(integrations.photo(asset_id), media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
     except KeyError:
         raise HTTPException(404, 'Foto niet beschikbaar.')
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code in (401, 403):
+            raise HTTPException(403, 'Immich weigert toegang tot de foto. Geef de API-sleutel in Immich het recht asset.view en vernieuw daarna deze pagina.')
+        raise HTTPException(502, 'Foto kon niet worden geladen.')
     except Exception:
         raise HTTPException(502, 'Foto kon niet worden geladen.')
 

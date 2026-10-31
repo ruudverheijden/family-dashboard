@@ -1,6 +1,6 @@
 # QE-acceptatie met Playwright
 
-Uitgangspunt: [oorspronkelijke requirements v0.3](REQUIREMENTS.md). P1 is geen acceptatiecriterium voor deze eerste versie. Een geslaagde testset is geen verklaring dat alle P0-eisen zijn afgetekend.
+Uitgangspunt: [requirements v0.4 met status per requirement en resterende TODO’s](REQUIREMENTS.md). P1 is geen acceptatiecriterium voor deze eerste versie. Een geslaagde testset is geen verklaring dat alle P0-eisen zijn afgetekend.
 
 ## Uitvoeren
 
@@ -21,18 +21,18 @@ De standaardrun ontdekt tests onder `tests/`, met uitzondering van `e2e/`. Allee
 
 De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, weekdagen, individuele en gezamenlijke uitvoering, archivering, invoergrenzen voor stappen/punten/tijdvensters, datum-normalisatie, Home Assistant-selectie en hergebruik van geheimen. Twee aanvullende API-regressies controleren dat zowel opslaan als ontdekken een gewijzigd CalDAV- of Immich-adres weigert voordat een opgeslagen geheim wordt doorgestuurd. Bij weigering blijft de eerdere configuratie intact.
 
-**Nieuwste backendrun na de beloningsimplementatie: 68 geslaagd** (33 unit- en 35 API/backendtests). De eerdere browsermatrix staat hieronder afzonderlijk.
+**Backendrun na de beloningsimplementatie: 68 geslaagd** (33 unit- en 35 API/backendtests). De latere run na de agenda-aanpassing staat onderaan.
 
 ## Koppeling aan requirements
 
 | Requirements | Geautomatiseerd bewijs |
 |---|---|
-| UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, 320×740, 740×320, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
+| UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, iPhone 13: 390×664, 750×342, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
 | GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, avatar, filtering, vergrendelen en onbevoegde API-toegang |
-| UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar op hun geplande dagen in dag- en weekagenda, zonder CalDAV; filter per gezinslid en direct afvinken vanuit agenda |
-| AG-01, AG-04 | Dag/week, CalDAV-afspraken, meerdaagse afspraak, tweemaal 02:30 bij wintertijd; browserfixture |
-| AG-02–08 | CalDAV optioneel; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
+| UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar in een aparte rij boven de agenda op hun geplande dagen in dag-, drie-daagse en weekweergave; filter per gezinslid en direct afvinken |
+| AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |
+| AG-02–08, AG-10 | CalDAV optioneel en uitsluitend-lezen; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
 | TK-01–04 | Taak met beschrijving/punten, individuele en gezamenlijke toewijzing, dagelijkse uitvoering, voltooien/heropenen, herladen, historie en gezinsfilter |
 | RT-01–04 | Geordende stappen, voortgang persistent na herladen, volgende dag leeg en vorige dag ongewijzigd; backendtests voor conflict/snapshots/inhaalperiode |
 | BEL-01–05 | Punten per taakuitvoering en volledig afgeronde routine, tegenboeking bij ongedaan maken, unieke transacties, gedeelde taakbeloning per verantwoordelijke, gereserveerde aanvraag, beheergoedkeuring/-afwijzing en idempotente herhaling |
@@ -81,3 +81,15 @@ De week-API levert nu geplande taakuitvoeringen voor alle zeven dagen; de agenda
 
 - Backend en unittests: **70/70 geslaagd**.
 - Chromium: **32/32 end-to-endtests geslaagd**, inclusief dagelijks terugkerende taken op alle zeven dagen zonder CalDAV.
+
+## Mobiele ondergrens — iPhone 13
+
+De minimale mobiele acceptatie is iPhone 13, staand en liggend. De Playwright-apparaatprofielen gebruiken 390×664 en 750×342 CSS-pixels beschikbare browserruimte, inclusief ruimteverlies door browserbediening. De eerdere grens van 320 pixels is vervangen; er is geen vaste minimale paginabreedte toegevoegd.
+
+Verificatie op 31 oktober 2026: 20 navigatie-, datum- en adminpaneelcontroles en 4 iPhone 13-emulatietests geslaagd in Chromium en WebKit. De emulatietests controleren aanraaknavigatie, horizontale pagina-overflow en het opslaan van apparaatinstellingen in beide oriëntaties. Dit is geen test op een fysieke iPhone.
+
+## Herstelde testverwachtingen — 31 oktober 2026
+
+De browsertests volgen nu de huidige interface: lokale taken worden zonder CalDAV weergegeven en afgevinkt zonder een aparte informatietekst; Home Assistant laadt rechtstreeks in het ingebouwde dashboard; de datum blijft zichtbaar in de bovenbalk bij Home Assistant en Immich. De tests blijven het geladen HA-dashboard, de afwezigheid van losse entiteitsaanroepen en volledige schermvulling onder de bovenbalk controleren. De schermvulling wordt ook in liggende iPhone 13-afmetingen gecontroleerd, inclusief horizontale overflow.
+
+Volledige browserrun: **92/92 geslaagd** in Chromium en WebKit (116,20 seconden). Eén deprecation-waarschuwing uit pytest-playwright; geen testfouten.

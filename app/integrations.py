@@ -107,6 +107,30 @@ def albums(cfg):
     response.raise_for_status()
     return [{'id': a['id'], 'name': a['albumName']} for a in response.json()]
 
+def album_assets(cfg, album_id, album):
+    # Older servers embed assets; newer servers expose them through search.
+    if 'assets' in album:
+        yield from album['assets']
+        return
+    page = 1
+    while True:
+        response = httpx.post(
+            cfg['immich_url'].rstrip('/') + '/api/search/metadata',
+            headers={'x-api-key': cfg['immich_key']},
+            json={'albumIds': [album_id], 'type': 'IMAGE', 'size': 1000, 'page': page},
+            timeout=20, follow_redirects=False,
+        )
+        response.raise_for_status()
+        result = response.json()['assets']
+        yield from result['items']
+        next_page = result.get('nextPage')
+        if next_page is None:
+            return
+        next_page = int(next_page)
+        if next_page <= page:
+            raise ValueError('Ongeldige paginering')
+        page = next_page
+
 def sync_photos():
     global assets
     with LOCK:
@@ -121,19 +145,23 @@ def sync_photos():
             for album in cfg['albums']:
                 r = immich_get(cfg, '/albums/' + album)
                 r.raise_for_status()
-                for asset in r.json().get('assets', []):
+                info = r.json()
+                for asset in album_assets(cfg, album, info):
                     if asset.get('type') == 'IMAGE' and not asset.get('isTrashed', False):
-                        fresh[asset['id']] = {'id': asset['id'], 'album': r.json().get('albumName', 'Album')}
+                        fresh[asset['id']] = {'id': asset['id'], 'album': info.get('albumName', 'Album')}
             assets = fresh
             purge_cache()
             with connect() as db:
                 set_status(db, 'immich', True, 'Albums bijgewerkt')
-        except Exception:
+        except Exception as error:
             # Fail closed: cannot establish whether cached images are still allowed.
             assets = {}
             purge_cache()
             with connect() as db:
-                set_status(db, 'immich', False, 'Immich niet bereikbaar of album niet toegankelijk. Controleer de verbinding en API-sleutel.')
+                denied = isinstance(error, httpx.HTTPStatusError) and error.response.status_code in (401, 403)
+                message = ('Immich weigert toegang. Geef de API-sleutel de rechten album.read, asset.read en asset.view.'
+                           if denied else 'Immich niet bereikbaar of album niet toegankelijk. Controleer de verbinding en API-sleutel.')
+                set_status(db, 'immich', False, message)
 
 def purge_cache():
     CACHE.mkdir(parents=True, exist_ok=True)

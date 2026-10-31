@@ -8,7 +8,7 @@ Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en
 
 ## Wat werkt
 
-- Vaste hoofdnavigatie: Kalender, Home Assistant en Immich; de datum staat in de bovenbalk bij de kalender en blijft zichtbaar tijdens scrollen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
+- Vaste hoofdnavigatie: Kalender, Home Assistant, Immich en Boodschappen. Eén gedeelde datumselectie boven het gezinsfilter voor agenda, taken, routines en beloningen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
 - Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
 - Dag- en weekagenda toont lokale taakuitvoeringen op hun geplande dagen, met voltooiing direct vanuit de agenda. CalDAV is optioneel voor privéafspraken; de gezinsplanner werkt ook zonder gekoppelde agenda.
 - CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen privéafspraken met herhalingen, uitzonderingen en tijdzones.
@@ -50,7 +50,7 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | `COOKIE_SECURE` | `.env` | `true` bij uitsluitend HTTPS; standaard `false` voor lokaal HTTP |
 | `CACHE_MB` | `.env` | Bovengrens vervangbare fotocache; standaard 128 MB |
 | CalDAV, HA en Immich | Beheer | Gezamenlijke instellingen, persistent in SQLite |
-| Inactiviteit, shuffle, uitsnijden | Dit scherm instellen | Alleen deze browser, in localStorage |
+| Inactiviteit, shuffle, uitsnijden | Beheer → Dit apparaat | Alleen deze browser, in localStorage |
 
 De volumes `family-data` en `family-cache` bevatten respectievelijk database/configuratie en vervangbare foto’s. Compose geeft ze een projectprefix. Voor eigen opslagpaden kunnen de volumemounts worden gewijzigd; de container draait als UID/GID 10001 en moet daar kunnen schrijven. Gebruik een lokale schijf voor SQLite, geen databasebestand op SMB/NFS.
 
@@ -86,11 +86,11 @@ Herstart Home Assistant daarna. Gebruik dit alleen op een vertrouwd netwerk: uit
 
 ### Immich
 
-Vul het basisadres **zonder `/api`** en een beperkte lees-API-sleutel in. Voer bij wijziging van het Immich-serveradres de API-sleutel opnieuw in. Kies **Albums ophalen**, selecteer expliciet de gewenste albums en sla op. Zonder selectie worden geen foto’s getoond. API-routes zijn gebaseerd op [albuminformatie](https://api.immich.app/endpoints/albums/getAlbumInfo) en [asset previews](https://api.immich.app/endpoints/assets/viewAsset); compatibiliteit met je geïnstalleerde Immich-versie moet worden gecontroleerd.
+Vul het basisadres **zonder `/api`** en een beperkte lees-API-sleutel met **`album.read`, `asset.read` en `asset.view`** in. Voer bij wijziging van het Immich-serveradres de API-sleutel opnieuw in. Kies **Albums ophalen**, selecteer expliciet de gewenste albums en sla op. Zonder selectie worden geen foto’s getoond. Oudere Immich-versies leveren foto's bij de albuminformatie; bij nieuwere versies haalt het dashboard alle pagina's op via `/api/search/metadata`, gefilterd op het geselecteerde album. Voor previews gebruikt het dashboard [asset previews](https://api.immich.app/endpoints/assets/viewAsset).
 
 De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke twee minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd. De Immich-fotolijst gebruikt, net als het HA-tabblad, de volledige ruimte onder de bovenbalk; de diavoorstellingsbediening ligt over de foto.
 
-Onder **Dit scherm instellen** kun je een inactiviteitstimer aanzetten. Standaard is deze uit. Open formulieren, niet-opgeslagen boodschappen en het routinescherm verhinderen automatisch wisselen. Aanrakingen in de geïntegreerde HA-weergave tellen mee als activiteit.
+Onder **Beheer → Dit apparaat** kun je een inactiviteitstimer aanzetten. Standaard is deze uit. Open formulieren, niet-opgeslagen boodschappen en het routinescherm verhinderen automatisch wisselen. Aanrakingen in de geïntegreerde HA-weergave tellen mee als activiteit.
 
 ## Uitvoeringen, conflicten en historie
 

@@ -62,7 +62,7 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 
 ## Bewuste beperkingen / keuzes
 
-- CalDAV alleen-lezen; synchronisatievenster 90 dagen terug tot circa één jaar vooruit.
+- CalDAV alleen-lezen; afspraken kunnen niet via het dashboard worden aangemaakt, gewijzigd of verwijderd. Synchronisatievenster 90 dagen terug tot circa één jaar vooruit.
 - Afzonderlijke uitvoeringen worden bij bekijken alvast vastgelegd, ook voor toekomstige datums. Sjabloonwijzigingen herschrijven deze niet. Inhalen van verlopen uitvoeringen is begrensd op twee jaar.
 - Historie bevat mutaties en een puntenledger met herleidbare transacties, maar geen individuele actoridentiteit: dagelijks profielgebruik is geen authenticatie.
 - Geen aparte achterstallige-takenlijst, geen routinevensters over middernacht en geen offline schrijfbuffer.
@@ -70,7 +70,7 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 - Integratiegeheimen staan onversleuteld in het beschermde servervolume; toegang tot host en back-ups is vertrouwelijk.
 - De gedeelde dagelijkse API vertrouwt het thuisnetwerk. Externe toegang, fijnmazige rechten en publicatie zijn niet ingericht.
 - Profielavatars zijn emoji’s; geen avatarupload. CalDAV/Immich-configuratie komt in de database; schermvoorkeuren blijven in de browser.
-- Licentie: PolyForm Noncommercial 1.0.0, gekozen voor niet-commercieel gebruik. Nog geen publieke GitHub-repository.
+- Licentie: PolyForm Noncommercial 1.0.0, gekozen voor niet-commercieel gebruik en opgenomen in broncode en container. Nog geen publieke GitHub-repository.
 
 ## Eerste echte acceptatieronde
 
@@ -96,6 +96,12 @@ Dagelijkse profielkeuze blijft een filter en geen authenticatie. De nieuwe API-t
 
 ## Update: taken in de agenda zonder CalDAV
 
-Lokale taakuitvoeringen verschijnen nu op hun geplande dagen in de dag- en weekagenda, inclusief direct afvinken en filtering per gezinslid. Voor een weekoverzicht vraagt de API alle zeven dagen op. CalDAV is optioneel en voegt uitsluitend privéafspraken toe; zonder account werkt de gezinsplanner normaal.
+Lokale taakuitvoeringen staan in een aparte rij boven de afspraken in de dag-, drie-daagse en weekagenda, inclusief direct afvinken en filtering per gezinslid. Afspraken staan op een tijdlijn van 07:00 tot 22:00 met hoogte naar duur; overlappende afspraken krijgen aparte kolommen. Hele-dagafspraken en afspraken buiten die uren blijven in aparte rijen zichtbaar. De drie-daagse weergave toont de geselecteerde dag en de twee volgende dagen; voor een weekoverzicht vraagt de API alle zeven dagen op. CalDAV is optioneel en voegt uitsluitend privéafspraken toe; zonder account werkt de gezinsplanner normaal.
 
 Gecontroleerd: **70 backend-/unittests** en **32 Chromium-end-to-endtests** geslaagd. De nieuwe acceptatietest controleert een dagelijkse taak op alle dagen van een week zonder CalDAV-koppeling.
+
+## Update: tijdschaal in de agenda
+
+Taken staan in een aparte rij boven de agenda-afspraken. Het tijdrooster beslaat 24 uur en scrolt verticaal; het opent rond de huidige tijd met twee uur terug en vier uur vooruit. Tijdgebonden afspraken staan op hun werkelijke tijd en zijn proportioneel geplaatst; overlappende afspraken delen de beschikbare kolomruimte. Hele-dagafspraken blijven apart zichtbaar. Op mobiel scrollen de meerdaagse en weekroosters binnen de agenda.
+
+Gecontroleerd: **78 backend-/unittests** en **50 Chromium-end-to-endtests** geslaagd, inclusief positie/duur, overlap, tijden buiten de oorspronkelijke schaal en mobiele weergave.

@@ -7,7 +7,7 @@ import stat
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -382,6 +382,16 @@ def test_week_state_includes_local_task_occurrences_without_caldav(client):
     assert result['events'] == []
     assert result['config']['caldav_configured'] is False
 
+def test_three_day_state_includes_today_and_two_following_days(client):
+    task_id, _, today = setup_task(client)
+    state = client.get('/api/state', params={'day': today, 'period': 'three-day'})
+    assert state.status_code == 200
+    occurrences = [run for run in state.json()['runs'] if run['template_id'] == task_id]
+    assert len(occurrences) == 3
+    assert {run['day'] for run in occurrences} == {
+        (date.fromisoformat(today) + timedelta(days=offset)).isoformat() for offset in range(3)
+    }
+
 def test_state_rejects_unknown_calendar_period(client):
     today = client.get('/api/state').json()['day']
     assert client.get('/api/state', params={'day': today, 'period': 'month'}).status_code == 422
@@ -422,6 +432,18 @@ def test_future_schema_refused(tmp_path,monkeypatch):
     with sqlite3.connect(tmp_path/'family.db') as c:
         c.execute('PRAGMA user_version=999')
     with pytest.raises(RuntimeError): db.init()
+
+def test_photo_permission_error_is_actionable(client, monkeypatch):
+    import httpx
+    pid = str(uuid.uuid4())
+    monkeypatch.setattr(integrations, 'assets', {pid: {'id': pid}})
+    response = httpx.Response(403, request=httpx.Request('GET', 'http://immich.example.org'))
+    monkeypatch.setattr(integrations, 'immich_get', lambda *args: response)
+    monkeypatch.setattr(integrations, 'CACHE', db.DATA.parent / 'cache')
+    result = client.get('/api/photos/' + pid)
+    assert result.status_code == 403
+    assert 'asset.view' in result.json()['detail']
+
 
 def test_unselected_photo_never_requested(client, monkeypatch):
     monkeypatch.setattr(integrations,'immich_get',lambda *a:pytest.fail('Must not request arbitrary photos'))
@@ -495,14 +517,22 @@ def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
         def search(self,**kwargs): return resources
     monkeypatch.setattr(real,'client',lambda a:Fake())
     SYNC_CALENDARS()
-    assert len(client.get('/api/state').json()['events'])==1
+    state=client.get('/api/state').json()
+    assert len(state['events'])==1
+    calendar_status=state['status']['caldav:'+account['id']]
+    assert calendar_status['calendars']==[{'name':'Gezin'}]
+    assert calendar_status['last_success']
     resources[:]=[SimpleNamespace(data=raw.replace('Afspraak','Gewijzigd'))]
     SYNC_CALENDARS()
-    assert client.get('/api/state').json()['events'][0]['title']=='Gewijzigd'
+    state=client.get('/api/state').json()
+    assert state['events'][0]['title']=='Gewijzigd'
+    last_success=state['status']['caldav:'+account['id']]['last_success']
     monkeypatch.setattr(real,'client',lambda a:(_ for _ in ()).throw(OSError('private server data')))
     SYNC_CALENDARS()
     state=client.get('/api/state').json()
     assert len(state['events'])==1 and state['status']['caldav:'+account['id']]['ok'] is False
+    assert state['status']['caldav:'+account['id']]['last_success']==last_success
+    assert state['status']['caldav:'+account['id']]['calendars']==[{'name':'Gezin'}]
     assert 'private server data' not in json.dumps(state)
     monkeypatch.setattr(real,'client',lambda a:Fake())
     resources.clear()
@@ -538,6 +568,43 @@ def test_immich_album_revocation_and_bounded_cache(client, monkeypatch):
         (integrations.CACHE/hashlib.sha256(id.encode()).hexdigest()).write_bytes(b'1234')
     integrations.purge_cache()
     assert sum(p.stat().st_size for p in integrations.CACHE.iterdir())<=5
+
+@pytest.mark.parametrize('denied_page', [None, 2])
+def test_immich_metadata_only_albums_paginate_and_fail_closed(client, monkeypatch, denied_page):
+    import httpx
+    aid, first, second = (str(uuid.uuid4()) for _ in range(3))
+    with db.connect() as c:
+        cfg = db.settings(c)
+        cfg.update(immich_url='http://immich.example.org', immich_key='secret', albums=[aid])
+        c.execute('UPDATE settings SET body=?', (json.dumps(cfg),))
+    request = httpx.Request('GET', cfg['immich_url'])
+    monkeypatch.setattr(integrations, 'immich_get', lambda *args: httpx.Response(
+        200, json={'albumName': 'Nieuw album', 'assetCount': 2}, request=request))
+    pages = []
+    def search(url, *, headers, json, **kwargs):
+        assert url.endswith('/api/search/metadata')
+        assert json['albumIds'] == [aid] and json['type'] == 'IMAGE'
+        page = json['page']
+        pages.append(page)
+        if page == denied_page:
+            return httpx.Response(403, request=request)
+        return httpx.Response(200, json={'assets': {
+            'items': [{'id': first if page == 1 else second, 'type': 'IMAGE'}],
+            'nextPage': '2' if page == 1 else None,
+        }}, request=request)
+    monkeypatch.setattr(integrations.httpx, 'post', search)
+    monkeypatch.setattr(integrations, 'CACHE', db.DATA.parent / 'cache')
+    SYNC_PHOTOS()
+    assert pages == [1, 2]
+    state = client.get('/api/state').json()
+    if denied_page:
+        assert state['photos'] == []
+        assert state['status']['immich']['ok'] is False
+        assert 'asset.read' in state['status']['immich']['message']
+    else:
+        assert {p['id'] for p in state['photos']} == {first, second}
+        assert state['status']['immich']['ok'] is True
+
 
 def test_untrusted_entity_ids_rejected(client):
     assert create(client,'groceries',{'name':'Test'},id='\"><img src=x>')[1].status_code==422
