@@ -11,6 +11,18 @@ from .planner import catch_up
 from .points import update_completion_points
 
 
+def history_snapshot(value):
+    snapshot = dict(value) if value else value
+    if snapshot is None:
+        return None
+    snapshot.pop("avatar_changed", None)
+    avatar = snapshot.get("avatar", "")
+    if isinstance(avatar, str) and avatar.startswith("data:image/jpeg;base64,"):
+        snapshot["avatar"] = ""
+        snapshot["has_photo"] = True
+    return snapshot
+
+
 def mutate(kind: str, body: Mutation, database):
     if kind not in ("members", "tasks", "routines", "groceries", "rewards", "runs"):
         raise DomainError(404)
@@ -124,7 +136,15 @@ def mutate(kind: str, body: Mutation, database):
                     )
                 db.execute("DELETE FROM entities WHERE kind=? AND id=?", (kind, body.id))
             else:
-                data = validate(kind, body.body, db)
+                incoming = dict(body.body)
+                if kind == "members":
+                    avatar_changed = str(incoming.pop("avatar_changed", "")).lower() in (
+                        "true",
+                        "1",
+                    )
+                    if not avatar_changed and not incoming.get("avatar") and row:
+                        incoming["avatar"] = json.loads(row["body"]).get("avatar", "")
+                data = validate(kind, incoming, db)
                 db.execute(
                     "INSERT OR REPLACE INTO entities VALUES (?,?,?,?)",
                     (kind, body.id, version + 1, json.dumps(data)),
@@ -136,8 +156,10 @@ def mutate(kind: str, body: Mutation, database):
                     body.id,
                     json.dumps(
                         {
-                            "before": json.loads(row["body"]) if row else None,
-                            "after": body.body if body.action == "save" else None,
+                            "before": history_snapshot(json.loads(row["body"])) if row else None,
+                            "after": (history_snapshot(data) if kind != "runs" else body.body)
+                            if body.action == "save"
+                            else None,
                         }
                     ),
                 ),

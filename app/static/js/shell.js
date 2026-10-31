@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, personName, plusDay, today, uuid } from './helpers.js';
+import { $, avatar, esc, personName, plusDay, today, uuid } from './helpers.js';
 import { api, mutate } from './api.js';
 import {
   calendarShell,
@@ -113,6 +113,13 @@ export function render() {
     state.tab === 'home' || state.tab === 'photos'
   );
   document.body.classList.toggle('child-mode', state.childMode);
+  $('#child-profile-switcher').innerHTML = state.data.members
+    .filter((member) => (member.role || 'child') === 'child')
+    .map(
+      (member) =>
+        `<button type="button" class="child-profile-button" data-child-mode="enter" data-child-profile="${esc(member.id)}" aria-label="Kindmodus voor ${esc(member.name)}" title="${esc(member.name)}">${avatar(member)}</button>`
+    )
+    .join('');
   updateHeaderDate();
   updateBrand();
   $('#app').innerHTML =
@@ -188,6 +195,11 @@ export function bindContent() {
   document.querySelectorAll('[data-child-mode="enter"]').forEach(
     (button) =>
       (button.onclick = () => {
+        const selectedChild = state.data.members.find(
+          (member) =>
+            member.id === button.dataset.childProfile && (member.role || 'child') === 'child'
+        );
+        if (!selectedChild) return;
         state.childModeReturn = {
           tab: state.tab,
           sub: state.sub,
@@ -197,7 +209,7 @@ export function bindContent() {
         };
         state.childMode = true;
         state.tab = 'calendar';
-        state.member = '';
+        state.member = selectedChild.id;
         state.day = today();
         state.view = 'day';
         refresh(true);
@@ -216,7 +228,11 @@ export function bindContent() {
   document.querySelectorAll('[data-child-member]').forEach(
     (button) =>
       (button.onclick = () => {
-        state.member = button.dataset.childMember;
+        const selectedMember = state.data.members.find(
+          (member) => member.id === button.dataset.childMember
+        );
+        if (!selectedMember || (selectedMember.role || 'child') !== 'child') return;
+        state.member = selectedMember.id;
         render();
       })
   );

@@ -53,9 +53,15 @@ def state(database, photos, day: str | None = None, period: str = "day"):
                 {"name": selection.get("name") or "Agenda"}
                 for selection in account.get("calendars", [])
             ]
+        members = entities(db, "members")
+        for member in members:
+            image = member.get("avatar", "")
+            if image.startswith("data:image/jpeg;base64,"):
+                member["avatar_url"] = f"/member-avatar/{member['id']}/{member['version']}"
+                member["avatar"] = ""
         result = {
             "day": day,
-            "members": entities(db, "members"),
+            "members": members,
             "tasks": entities(db, "tasks"),
             "routines": entities(db, "routines"),
             "groceries": entities(db, "groceries"),

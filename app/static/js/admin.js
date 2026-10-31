@@ -250,8 +250,10 @@ export function renderAdmin() {
       state.screen = next;
       deviceDirty = false;
       state.dialogDirty = generalDirty;
+      const returnToAdmin = !generalDirty;
       if (!state.dialogDirty) $('#dialog').close();
       await actions.refresh(true);
+      if (returnToAdmin) await actions.openAdmin();
       toast('Opgeslagen op dit scherm');
     } catch (error) {
       errorInForm(error);
@@ -341,7 +343,8 @@ export function renderAdmin() {
     () => {
       generalDirty = false;
       return deviceDirty;
-    }
+    },
+    () => (deviceDirty ? undefined : actions.openAdmin())
   );
   $('#sync-now').onclick = async () => {
     const b = $('#sync-now');

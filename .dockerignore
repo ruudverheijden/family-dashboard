@@ -1,9 +1,14 @@
 .git
 .venv
 .env
+.env.*
+!.env.example
 data
 cache
 __pycache__
+**/__pycache__
+**/*.pyc
+**/*.pyo
 .pytest_cache
 backups
 test-results

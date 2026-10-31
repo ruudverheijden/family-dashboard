@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import json
 import os
@@ -92,6 +93,97 @@ def setup_task(c, mode="individual", kind="tasks", members=1):
     return id, body, today
 
 
+def test_member_role_is_saved_and_validated(client):
+    child_id, child = create(
+        client, "members", {"name": "Alex", "color": "#aa7755", "role": "child"}
+    )
+    parent_id, parent = create(
+        client, "members", {"name": "Sam", "color": "#5577aa", "role": "parent"}
+    )
+    assert child.status_code == parent.status_code == 200
+    members = {member["id"]: member for member in client.get("/api/state").json()["members"]}
+    assert members[child_id]["role"] == "child"
+    assert members[parent_id]["role"] == "parent"
+    assert (
+        create(client, "members", {"name": "Invalid", "color": "#ffffff", "role": "grandparent"})[
+            1
+        ].status_code
+        == 422
+    )
+
+
+def test_member_photo_is_served_separately_and_preserved_on_profile_edit(client):
+    photo = b"\xff\xd8\xfffake-jpeg-payload"
+    encoded = "data:image/jpeg;base64," + base64.b64encode(photo).decode()
+    member_id, created = create(
+        client,
+        "members",
+        {"name": "Alex", "color": "#aa7755", "avatar": encoded, "avatar_changed": "true"},
+    )
+    assert created.status_code == 200
+
+    member = next(m for m in client.get("/api/state").json()["members"] if m["id"] == member_id)
+    assert member["avatar"] == ""
+    assert member["avatar_url"] == f"/member-avatar/{member_id}/1"
+    image = client.get(member["avatar_url"])
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.content == photo
+
+    _, updated = create(
+        client,
+        "members",
+        {
+            "name": "Alex Jansen",
+            "color": "#aa7755",
+            "avatar": "",
+            "avatar_changed": "",
+        },
+        id=member_id,
+        version=1,
+    )
+    assert updated.status_code == 200
+    member = next(m for m in client.get("/api/state").json()["members"] if m["id"] == member_id)
+    assert member["avatar_url"] == f"/member-avatar/{member_id}/2"
+    assert client.get(member["avatar_url"]).content == photo
+    assert encoded not in client.get("/api/history").text
+    assert client.get(f"/member-avatar/{member_id}/1").status_code == 404
+
+    _, removed = create(
+        client,
+        "members",
+        {
+            "name": "Alex Jansen",
+            "color": "#aa7755",
+            "avatar": "",
+            "avatar_changed": "true",
+        },
+        id=member_id,
+        version=2,
+    )
+    assert removed.status_code == 200
+    member = next(m for m in client.get("/api/state").json()["members"] if m["id"] == member_id)
+    assert "avatar_url" not in member
+    assert client.get(f"/member-avatar/{member_id}/3").status_code == 404
+
+
+@pytest.mark.parametrize(
+    "avatar",
+    [
+        "data:image/svg+xml;base64,PHN2Zz4=",
+        "data:image/jpeg;base64,dGVzdA==",
+        "data:image/jpeg;base64," + "A" * 220_001,
+    ],
+)
+def test_invalid_member_photos_are_rejected(client, avatar):
+    _, result = create(
+        client,
+        "members",
+        {"name": "Alex", "color": "#aa7755", "avatar": avatar, "avatar_changed": "true"},
+    )
+    assert result.status_code == 422
+
+
 def test_admin_and_secret_isolation(client):
     cfg = client.get("/api/admin/settings").json()
     cfg.update(immich_url="http://immich.example.org", immich_key="TOPSECRET")
@@ -102,6 +194,17 @@ def test_admin_and_secret_isolation(client):
     assert client.get("/api/admin/settings").status_code == 401
     assert create(client, "members", {"name": "No", "color": "#ffffff"})[1].status_code == 401
     assert client.post("/api/admin/sync").status_code == 401
+
+
+def test_public_dashboard_refresh_does_not_change_admin_session(client):
+    auth_runtime = client.app.state.runtime.auth
+    original_expiry = auth_runtime.sessions["test-admin"]
+
+    for _ in range(5):
+        assert client.get("/api/state").status_code == 200
+
+    assert auth_runtime.sessions["test-admin"] == original_expiry
+    assert client.get("/api/admin/settings").status_code == 200
 
 
 def test_branding_settings_are_saved_and_publicly_served(client):
@@ -615,6 +718,62 @@ def test_routine_concurrent_different_steps_conflict(client):
     assert create(client, "runs", {"done": [0]}, id=run["id"], version=1)[1].status_code == 200
     assert create(client, "runs", {"done": [1]}, id=run["id"], version=1)[1].status_code == 409
     assert create(client, "runs", {"done": [0, 1]}, id=run["id"], version=2)[1].status_code == 200
+
+
+@pytest.mark.parametrize(
+    "original_mode,new_mode,count", [("individual", "shared", 1), ("shared", "individual", 2)]
+)
+def test_task_mode_edit_hides_superseded_untouched_runs(client, original_mode, new_mode, count):
+    task_id, body, today = setup_task(client, mode=original_mode, members=2)
+    tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
+    old_runs = client.get("/api/state", params={"day": tomorrow}).json()["runs"]
+    assert (
+        create(client, "tasks", {**body, "mode": new_mode}, id=task_id, version=1)[1].status_code
+        == 200
+    )
+
+    for day in (today, tomorrow):
+        for _ in range(2):  # Polling must not bring back the superseded executions.
+            runs = client.get("/api/state", params={"day": day}).json()["runs"]
+            assert len(runs) == count
+            assert all(run["body"]["mode"] == new_mode for run in runs)
+    with db.connect() as connection:
+        for run in old_runs:
+            stored = connection.execute("SELECT * FROM runs WHERE id=?", (run["id"],)).fetchone()
+            assert json.loads(stored["body"]) == run["body"]
+            assert stored["version"] == run["version"]
+
+    # An earlier day without replacement executions keeps its original snapshots.
+    earlier = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    with db.connect() as connection:
+        connection.execute("UPDATE runs SET day=? WHERE id=?", (earlier, old_runs[0]["id"]))
+    historical = client.get("/api/state", params={"day": earlier}).json()["runs"]
+    assert [run["id"] for run in historical] == [old_runs[0]["id"]]
+
+
+@pytest.mark.parametrize("undo", [False, True])
+def test_task_mode_edit_preserves_executions_with_completion_history(client, undo):
+    task_id, body, _ = setup_task(client)
+    run = client.get("/api/state").json()["runs"][0]
+    assert create(client, "runs", {"done": [0]}, id=run["id"], version=1)[1].status_code == 200
+    if undo:
+        assert create(client, "runs", {"done": []}, id=run["id"], version=2)[1].status_code == 200
+    before = client.get("/api/state").json()
+    assert (
+        create(client, "tasks", {**body, "mode": "shared"}, id=task_id, version=1)[1].status_code
+        == 200
+    )
+    after = client.get("/api/state").json()
+    if undo:
+        assert [item["member"] for item in after["runs"]] == ["shared"]
+    else:
+        assert before["runs"][0] in after["runs"]
+    with db.connect() as connection:
+        stored = connection.execute("SELECT * FROM runs WHERE id=?", (run["id"],)).fetchone()
+        assert json.loads(stored["done"]) == before["runs"][0]["done"]
+        assert stored["version"] == before["runs"][0]["version"]
+    assert after["balances"] == before["balances"]
+    assert after["point_transactions"] == before["point_transactions"]
 
 
 def test_template_edits_preserve_snapshot(client):

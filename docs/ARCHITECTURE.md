@@ -69,6 +69,10 @@ gebruikerswijzigingen; het samenvoegen van CSS-overschrijvingen is een aparte ve
 
 - Een sjabloon en een uitvoering zijn verschillende records. Bestaande uitvoeringssnapshots
   wijzigen niet bij het bewerken of archiveren van een sjabloon.
+- Bij een gewijzigde taakverdeling verbergt de dashboardselectie oude open uitvoeringen
+  wanneer dezelfde taak en dag uitvoeringen met de actuele verdeling hebben. Ook eerder
+  heropende uitvoeringen vallen hieronder; opgeslagen snapshots, historie en puntenboekingen
+  blijven intact. Afgeronde uitvoeringen en dagen zonder vervanging blijven zichtbaar.
 - Het bekijken van een datum kan uitvoeringen aanmaken, ook in de toekomst. `GET /api/state`
   is daardoor bewust nog geen zuivere leesoperatie. Verplaats dit niet zonder apart besluit.
 - De taakweergave mag actuele sjabloontekst en punten tonen; de daadwerkelijke puntenboeking
@@ -123,3 +127,22 @@ Niet inbegrepen in deze ronde: polling optimaliseren, schema/JSON-opslag vervang
 versiegestuurde migraties verder uitbouwen, CSS consolideren, historische tabellen begrenzen,
 of een andere betekenis geven aan snapshots en getoonde punten. Beoordeel die wijzigingen
 apart, met hun eigen gegevens- en gebruikersimpact.
+
+## Containeropslag bij eerste start
+
+`compose.yaml` wordt gedeeld door Compose en Portainer. Standaard gebruikt het
+benoemde volumes; `DATA_VOLUME` en `CACHE_VOLUME` kunnen absolute hostpaden bevatten.
+Beide services gebruiken dezelfde opslag en `DASHBOARD_IMAGE`. Eerst draait `storage-init`.
+Deze service gebruikt dezelfde image en draait kort als root met CHOWN/FOWNER en
+DAC_OVERRIDE, zonder netwerk. Ze stelt recursief de eigenaar van `/data`, `/cache`,
+submappen en gewone bestanden in op 10001:10001, met mappen 0700 en bestanden 0600.
+Ze wijzigt geen inhoud en opent databases niet via SQLite. Symbolische links worden
+niet gevolgd en speciale bestanden overgeslagen; hardlinks naar gewone bestanden
+worden geweigerd. Bestandsdescriptoren met `O_NOFOLLOW` voorkomen dat bij openen
+alsnog een symlink gevolgd wordt. Onleesbare mappen veroorzaken een fout in plaats
+van stilzwijgend overgeslagen te worden. DAC_OVERRIDE maakt verwerking van private
+teruggezette bestanden mogelijk, ook als ze nog van een andere gebruiker zijn.
+Het dashboard wacht via `service_completed_successfully` en blijft draaien als
+UID/GID 10001 met alle capabilities verwijderd. `db.init()` blijft verantwoordelijk
+voor een ontbrekende database en de schema-initialisatie. Een opslagfout stopt de
+voorbereiding; de app wijkt nooit stilzwijgend uit naar niet-persistente opslag.

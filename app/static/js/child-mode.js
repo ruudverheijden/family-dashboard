@@ -47,29 +47,34 @@ function rewardsView() {
       ? 'Je kunt een beloning kiezen!'
       : 'Vraag een volwassene om een beloning toe te voegen.';
 
-  return `<section class="child-rewards"><header><div><h2>Mijn beloningen</h2><p>${progressMessage}</p></div><div class="child-star-balance" aria-label="${available} sterren">${icon('gift')}<strong>${available}</strong></div></header>${requests.length ? `<p class="child-request-status" role="status">Je aanvraag wacht op een volwassene.</p>` : ''}<div class="child-reward-list">${state.data.rewards
-    .map((reward) => {
-      const pending = pendingRewardIds.has(reward.id);
-      const canRequest = available >= reward.price && !pending;
-      const buttonText = pending
-        ? 'Aangevraagd'
-        : canRequest
-          ? 'Vraag aan'
-          : `Nog ${reward.price - available} nodig`;
-      return `<article class="child-reward-card"><span class="child-reward-icon" aria-hidden="true">${esc(reward.icon)}</span><div><h3>${esc(reward.title)}</h3><p>${reward.price} ${reward.price === 1 ? 'ster' : 'sterren'}</p></div><button class="primary" data-request-reward="${reward.id}" ${canRequest ? '' : 'disabled'}>${buttonText}</button></article>`;
-    })
-    .join('') || '<p class="child-empty">Er zijn nog geen beloningen.</p>'}</div></section>`;
+  return `<section class="child-rewards"><header><div><h2>Mijn beloningen</h2><p>${progressMessage}</p></div><div class="child-star-balance" aria-label="${available} sterren">${icon('gift')}<strong>${available}</strong></div></header>${requests.length ? `<p class="child-request-status" role="status">Je aanvraag wacht op een volwassene.</p>` : ''}<div class="child-reward-list">${
+    state.data.rewards
+      .map((reward) => {
+        const pending = pendingRewardIds.has(reward.id);
+        const canRequest = available >= reward.price && !pending;
+        const buttonText = pending
+          ? 'Aangevraagd'
+          : canRequest
+            ? 'Vraag aan'
+            : `Nog ${reward.price - available} nodig`;
+        return `<article class="child-reward-card"><span class="child-reward-icon" aria-hidden="true">${esc(reward.icon)}</span><div><h3>${esc(reward.title)}</h3><p>${reward.price} ${reward.price === 1 ? 'ster' : 'sterren'}</p></div><button class="primary" data-request-reward="${reward.id}" ${canRequest ? '' : 'disabled'}>${buttonText}</button></article>`;
+      })
+      .join('') || '<p class="child-empty">Er zijn nog geen beloningen.</p>'
+  }</div></section>`;
 }
 
 export function childModeView() {
   const member = person(state.member);
-  if (!member) {
-    return `<section class="child-mode-page child-profile-picker"><header><span class="child-welcome-icon" aria-hidden="true">👋</span><h1>Wie ben jij?</h1><p>Kies je naam.</p></header><div class="child-profile-list">${state.data.members
-      .map(
-        (person) =>
-          `<button class="child-profile-option" data-child-member="${person.id}">${avatar(person)}<span>${esc(person.name)}</span>${icon('right')}</button>`
-      )
-      .join('') || '<p class="child-empty">Er zijn nog geen gezinsleden ingesteld.</p>'}</div><button class="child-exit" data-child-mode="exit">Terug naar ouderweergave</button></section>`;
+  if (!member || (member.role || 'child') !== 'child') {
+    return `<section class="child-mode-page child-profile-picker"><header><span class="child-welcome-icon" aria-hidden="true">👋</span><h1>Wie ben jij?</h1><p>Kies je naam.</p></header><div class="child-profile-list">${
+      state.data.members
+        .filter((person) => (person.role || 'child') === 'child')
+        .map(
+          (person) =>
+            `<button class="child-profile-option" data-child-member="${person.id}">${avatar(person)}<span>${esc(person.name)}</span>${icon('right')}</button>`
+        )
+        .join('') || '<p class="child-empty">Er zijn nog geen kinderen ingesteld.</p>'
+    }</div><button class="child-exit" data-child-mode="exit">Terug naar ouderweergave</button></section>`;
   }
 
   const tasks = runsForMember('tasks');
@@ -81,5 +86,5 @@ export function childModeView() {
     routines.set(run.template_id, group);
   }
 
-  return `<section class="child-mode-page"><header class="child-welcome">${avatar(member)}<div><h1>Hoi ${esc(member.name)}!</h1><p>Dit kun jij vandaag doen.</p></div><button class="child-exit" data-child-mode="exit">Naar ouderweergave</button></header><section class="child-activities" aria-labelledby="child-tasks-title"><h2 id="child-tasks-title">Mijn taken</h2><div class="child-task-list">${tasks.map(taskCard).join('') || '<p class="child-empty">Geen taken voor vandaag. Fijn!</p>'}</div></section><section class="child-activities" aria-labelledby="child-routines-title"><h2 id="child-routines-title">Mijn routines</h2><div class="child-routine-list">${[...routines.values()].map(routineCard).join('') || '<p class="child-empty">Geen routines voor vandaag.</p>'}</div></section>${rewardsView()}</section>`;
+  return `<section class="child-mode-page"><header class="child-welcome">${avatar(member)}<div><h1>Hoi ${esc(member.name)}!</h1><p>Dit kun jij vandaag doen.</p></div><button class="child-exit" data-child-mode="exit">${icon('left')}Naar ouderweergave</button></header><section class="child-activities" aria-labelledby="child-tasks-title"><h2 id="child-tasks-title">Mijn taken</h2><div class="child-task-list">${tasks.map(taskCard).join('') || '<p class="child-empty">Geen taken voor vandaag. Fijn!</p>'}</div></section><section class="child-activities" aria-labelledby="child-routines-title"><h2 id="child-routines-title">Mijn routines</h2><div class="child-routine-list">${[...routines.values()].map(routineCard).join('') || '<p class="child-empty">Geen routines voor vandaag.</p>'}</div></section>${rewardsView()}</section>`;
 }

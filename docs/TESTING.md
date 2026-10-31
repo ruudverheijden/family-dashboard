@@ -26,6 +26,54 @@ Iedere browsertest start een echte Uvicorn-server op een vrije lokale poort met 
 
 ## Unittests en backendregressies
 
+`tests/test_container_storage.py` controleert echte eerste startup met lege,
+root-owned opslag, zowel benoemde volumes als bind mounts op het Linux-bestandssysteem
+van de Docker-host. Eerst wordt de oorspronkelijke SQLite-fout zonder voorbereiding
+gereproduceerd. Daarna moeten de echte Compose-services de opslag voorbereiden,
+de app als UID/GID 10001 starten, een lege database maken en de frontend en state-API
+aanbieden. Na containervervanging moeten fictieve opgeslagen instellingen behouden zijn.
+Alle resources hebben unieke testnamen en worden na afloop verwijderd. Geen echte
+`.env`, databases of integratiegegevens worden gebruikt.
+Beide opslagvormen worden uit hetzelfde `compose.yaml` opgebouwd via de standaard
+volumes of de padvariabelen `DATA_VOLUME`/`CACHE_VOLUME`. De tests controleren ook de
+door Compose daadwerkelijk opgeloste image en mounts, zodat de Portainer-variant
+geen afwijkende configuratie kan krijgen.
+De vervangingsfase zet een consistente fictieve database terug met een andere UID/GID
+en reproduceert de `PermissionError` bij `chmod`. Ook private submappen en bestanden
+worden teruggezet. Na init moeten hun eigenaar, map-/bestandsrechten en inhoud kloppen,
+de database moet intact zijn en de app moet als UID/GID 10001 starten. Links naar
+bestanden en mappen buiten de opslag worden niet gevolgd; hardlinks worden geweigerd.
+
+```sh
+CONTAINER_TEST_IMAGE=ruudv/family-dashboard:0.1.0 .venv/bin/python -m pytest tests/test_container_storage.py -q
+```
+
+Zonder `CONTAINER_TEST_IMAGE` worden deze Docker-tests overgeslagen.
+
+De Docker-contextregressie gebruikt de echte Docker-builder met uitsluitend fictieve
+bestanden in een tijdelijke map. Ze controleert onder andere geneste Python-caches,
+losse bytecode, `.env`, gegevens, back-ups en testartefacten. Hiervoor is een lokale
+Docker-daemon nodig; de gewone backendrun slaat deze test over:
+
+```sh
+RUN_CONTAINER_TESTS=1 .venv/bin/python -m pytest tests/test_container_packaging.py -q
+```
+
+De beveiligingsregressie controleert het daadwerkelijk gebouwde runtime-image op musl,
+afwezigheid van glibc, minimaal zlib 1.3.2-r1, UID/GID 10001, tijdzones, SQLite en
+HTTP-antwoorden. Ze gebruikt tijdelijke gegevens, geen netwerk en een alleen-lezen
+container met dezelfde beveiligingsbeperkingen als Compose. Voer haar per gebouwde
+architectuur uit (de standaard backendrun slaat haar over):
+
+```sh
+BUILDX_GIT_INFO=false docker build --pull -t family-dashboard:security-test .
+CONTAINER_TEST_IMAGE=family-dashboard:security-test .venv/bin/python -m pytest tests/test_container_security.py -q
+docker scout cves --exit-code --only-cve-id CVE-2026-85091,CVE-2026-84243 local://family-dashboard:security-test
+```
+
+De gerichte scan doet uitsluitend een uitspraak over deze twee CVE's. De containerjob
+in CI voert de runtime-regressie uit na de Compose-build, vóór de healthcheck.
+
 De standaardrun ontdekt tests onder `tests/`, met uitzondering van `e2e/`. Alleen de nieuwe unittests draaien met `.venv/bin/python -m pytest tests/unit -q`. Deze starten geen server, openen geen database en maken geen netwerkverbinding.
 
 De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, weekdagen, individuele en gezamenlijke uitvoering, archivering, invoergrenzen voor stappen/punten/tijdvensters, datum-normalisatie, Home Assistant-selectie en hergebruik van geheimen. Twee aanvullende API-regressies controleren dat zowel opslaan als ontdekken een gewijzigd CalDAV- of Immich-adres weigert voordat een opgeslagen geheim wordt doorgestuurd. Bij weigering blijft de eerdere configuratie intact.
@@ -38,7 +86,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 |---|---|
 | UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, iPhone 13: 390×664, 750×342, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
-| GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, avatar, filtering, vergrendelen en onbevoegde API-toegang |
+| GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, foto uploaden/vervangen/verwijderen en behouden bij andere wijzigingen, filtering, vergrendelen en onbevoegde API-toegang |
 | UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar in een aparte rij boven de agenda op hun geplande dagen in dag-, drie-daagse en weekweergave; filter per gezinslid en direct afvinken |
 | AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont, met actuele-tijdindicator; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |
 | AG-02–08, AG-10 | CalDAV optioneel en uitsluitend-lezen; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; eigenaar heeft de agenda-integratie handmatig gevalideerd |

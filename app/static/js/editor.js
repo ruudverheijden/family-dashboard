@@ -5,7 +5,7 @@ import {
   taskIconMetadata,
   taskIcons
 } from './icons.js';
-import { $, esc, fmt, selected, uuid, weekdays } from './helpers.js';
+import { $, avatar, esc, fmt, selected, uuid, weekdays } from './helpers.js';
 import { bindForm, errorInForm, field, modal, toast } from './dialogs.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
@@ -35,7 +35,7 @@ export function editEntity(kind, item) {
     const groups = [...groupedChoices].sort(
       ([a], [b]) => taskIconCategories.indexOf(a) - taskIconCategories.indexOf(b)
     );
-    return `<div class="task-icon-field${isRoutine && name === 'icon' ? ' routine-icon-field' : ''}"><span class="task-icon-label">${esc(label)}</span><input type="hidden" name="${esc(name)}" value="${esc(value)}"><button type="button" class="task-icon-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="${esc(id)}"><span>Kies pictogram</span><span class="task-icon-current">${esc(value)}</span></button><div id="${esc(id)}" class="task-icon-picker" role="group" aria-label="Kies een pictogram voor ${esc(label.toLowerCase())}" hidden><input type="search" class="task-icon-search" aria-label="Zoek pictogrammen" placeholder="Zoek op naam of pictogram"><p class="task-icon-no-results" role="status" hidden>Geen pictogrammen gevonden.</p>${groups
+    return `<div class="task-icon-field${isRoutine && name === 'icon' ? ' routine-icon-field' : ''}"><span class="task-icon-label">${esc(label)}</span><input type="hidden" name="${esc(name)}" value="${esc(value)}"><button type="button" class="task-icon-trigger" aria-label="Kies pictogram voor ${esc(label.toLowerCase())}; huidig: ${esc(value)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="${esc(id)}"><span class="task-icon-current">${esc(value)}</span></button><div id="${esc(id)}" class="task-icon-picker" role="group" aria-label="Kies een pictogram voor ${esc(label.toLowerCase())}" hidden><input type="search" class="task-icon-search" aria-label="Zoek pictogrammen" placeholder="Zoek op naam of pictogram"><p class="task-icon-no-results" role="status" hidden>Geen pictogrammen gevonden.</p>${groups
       .map(
         ([category, icons]) =>
           `<section class="task-icon-category"><h4>${esc(category)}</h4><div class="task-icon-category-grid">${icons
@@ -58,12 +58,13 @@ export function editEntity(kind, item) {
   let nextRoutineStepId = routineSteps.length;
   const routineStep = (step, index) =>
     `<div class="routine-step-row"><label>Titel stap ${index + 1}<input name="step_text" type="text" value="${esc(step.text)}" required maxlength="150"></label>${iconField('step_icon', step.icon || '✓', `routine-step-icon-${index}`, `Pictogram stap ${index + 1}`)}<button type="button" class="danger remove-routine-step" aria-label="Stap ${index + 1} verwijderen">${icon('close')}</button></div>`;
-  if (kind === 'members')
-    html = `<div class="form-grid">${field('Naam', 'name', x.name, 'text', 'required maxlength="60"')}${field('Kleur', 'color', x.color || '#b97b63', 'color')}${field('Avatar (emoji, optioneel)', 'avatar', x.avatar, 'text', 'maxlength="8"')}</div>`;
-  else if (kind === 'groceries')
+  if (kind === 'members') {
+    const hasPhoto = Boolean(x.avatar_url || x.avatar?.startsWith('data:image/jpeg;base64,'));
+    html = `<div class="form-grid">${field('Naam', 'name', x.name, 'text', 'required maxlength="60"')}<label>Rol<select name="role"><option value="child"${selected(x.role || 'child', 'child')}>Kind</option><option value="parent"${selected(x.role || 'child', 'parent')}>Ouder</option></select></label>${field('Kleur', 'color', x.color || '#b97b63', 'color')}<div class="member-avatar-controls"><div id="member-avatar-preview">${avatar(x)}</div><div><label for="member-avatar-file">Profielfoto (optioneel)</label><input id="member-avatar-file" type="file" accept="image/jpeg,image/png,image/webp"><small>JPEG, PNG of WebP; wordt verkleind opgeslagen.</small><button type="button" id="remove-member-avatar" class="secondary small" ${hasPhoto ? '' : 'hidden'}>Foto verwijderen</button></div></div><input type="hidden" name="avatar" value=""><input type="hidden" name="avatar_changed" value=""></div>`;
+  } else if (kind === 'groceries')
     html = `${field('Wat hebben we nodig?', 'name', x.name, 'text', 'required maxlength="150"')}${field('Hoeveelheid / eenheid', 'quantity', x.quantity, 'text', 'maxlength="60"')}${field('Notitie', 'note', x.note, 'text', 'maxlength="500"')}`;
   else if (isReward)
-    html = `<div class="form-grid">${field('Naam', 'title', x.title, 'text', 'required maxlength="100"')}${field('Pictogram', 'icon', x.icon || '🎁', 'text', 'maxlength="8"')}${field('Prijs in punten', 'price', x.price || 1, 'number', 'min="1" max="100000" required')}<label class="full">Beschrijving<textarea name="description" maxlength="500">${esc(x.description || '')}</textarea></label></div>`;
+    html = `<div class="form-grid"><div class="title-icon-row">${field('Naam', 'title', x.title, 'text', 'required maxlength="100"')}${iconField('icon', x.icon || '🎁', 'reward-icon-picker', 'Pictogram')}</div>${field('Prijs in punten', 'price', x.price || 1, 'number', 'min="1" max="100000" required')}<label class="full">Beschrijving<textarea name="description" maxlength="500">${esc(x.description || '')}</textarea></label></div>`;
   else {
     if (!state.data.members.length) {
       modal(
@@ -76,7 +77,7 @@ export function editEntity(kind, item) {
     const entityIcon = isTask
       ? iconField('icon', x.icon || '✓', 'task-icon-picker', 'Pictogram')
       : iconField('icon', x.icon || '☀️', 'routine-icon-picker', 'Pictogram');
-    html = `<div class="form-grid">${field('Titel', 'title', x.title, 'text', 'required maxlength="150"')}${entityIcon}<label class="full">Beschrijving<textarea name="description" maxlength="1000">${esc(x.description || '')}</textarea></label>${field('Startdatum', 'date', x.date || state.day, 'date', 'required')}${isTask ? `<label>Herhaling<select name="repeat"><option value="once"${selected(x.repeat, 'once')}>Eenmalig</option><option value="daily"${selected(x.repeat, 'daily')}>Elke dag</option><option value="weekly"${selected(x.repeat, 'weekly')}>Op gekozen weekdagen</option></select></label>` : ''}</div><label>Voor wie?</label><div class="member-chips">${state.data.members.map((m) => `<label class="check-label"><input type="checkbox" name="members" value="${m.id}" ${(x.members || [state.member]).includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')}</div><label style="margin-top:16px">Weekdagen ${isTask ? '(bij weekherhaling)' : ''}</label><div class="weekdays">${weekdays.map((d, i) => `<label><input type="checkbox" name="weekdays" value="${i}" ${(x.weekdays || [0, 1, 2, 3, 4, 5, 6]).includes(i) ? 'checked' : ''}>${d}</label>`).join('')}</div>`;
+    html = `<div class="form-grid"><div class="title-icon-row">${field('Titel', 'title', x.title, 'text', 'required maxlength="150"')}${entityIcon}</div><label class="full">Beschrijving<textarea name="description" maxlength="1000">${esc(x.description || '')}</textarea></label>${field('Startdatum', 'date', x.date || state.day, 'date', 'required')}${isTask ? `<label>Herhaling<select name="repeat"><option value="once"${selected(x.repeat, 'once')}>Eenmalig</option><option value="daily"${selected(x.repeat, 'daily')}>Elke dag</option><option value="weekly"${selected(x.repeat, 'weekly')}>Op gekozen weekdagen</option></select></label>` : ''}</div><div class="weekday-field"${isTask && x.repeat !== 'weekly' ? ' hidden' : ''}><label>Weekdagen ${isTask ? '(bij weekherhaling)' : ''}</label><div class="weekdays">${weekdays.map((d, i) => `<label><input type="checkbox" name="weekdays" value="${i}" ${(x.weekdays || [0, 1, 2, 3, 4, 5, 6]).includes(i) ? 'checked' : ''}>${d}</label>`).join('')}</div></div><div class="entity-members-field"><label>Voor wie?</label><div class="member-chips${isTask ? ' task-members' : ''}">${state.data.members.map((m) => `<label class="check-label"><input type="checkbox" name="members" value="${m.id}" ${(x.members || [state.member]).includes(m.id) ? 'checked' : ''}>${esc(m.name)}</label>`).join('')}</div></div>`;
     if (isTask)
       html += `<div class="form-grid"><label>Uitvoering<select name="mode"><option value="individual"${selected(x.mode, 'individual')}>Iedereen een eigen taak</option><option value="shared"${selected(x.mode, 'shared')}>Samen één taak</option></select></label>${field('Punten bij voltooien', 'points', x.points || 0, 'number', 'min="0" max="10000"')}</div>`;
     else
@@ -95,16 +96,89 @@ export function editEntity(kind, item) {
           routines: 'Een nieuwe routine',
           rewards: 'Een nieuwe beloning'
         }[kind],
-    `<form id="edit-form">${html}<div class="form-actions">${item ? `<button type="button" id="delete-entity" class="danger">${isTask || isRoutine ? 'Archiveren' : 'Verwijderen'}</button>` : ''}<button type="submit" class="primary">Opslaan ${icon('check')}</button></div></form>`
+    `<form id="edit-form"${isTask ? ' class="task-editor"' : ''}>${html}<div class="form-actions">${item ? `<button type="button" id="delete-entity" class="danger">${isTask || isRoutine ? 'Archiveren' : 'Verwijderen'}</button>` : ''}<button type="submit" class="primary">Opslaan ${icon('check')}</button></div></form>`
   );
+  if (isTask) {
+    const repeat = $('#edit-form [name="repeat"]');
+    const weekdayField = $('#edit-form .weekday-field');
+    repeat.onchange = () => {
+      weekdayField.hidden = repeat.value !== 'weekly';
+    };
+  }
+  let memberPhotoTask = Promise.resolve();
+  let memberPhotoError = null;
+  let memberPhotoSelection = 0;
+  if (kind === 'members') {
+    const fileInput = $('#member-avatar-file');
+    fileInput.onchange = () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const selection = ++memberPhotoSelection;
+      memberPhotoError = null;
+      memberPhotoTask = (async () => {
+        if (
+          !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
+          file.size > 12 * 1024 * 1024
+        )
+          throw new Error('Kies een JPEG-, PNG- of WebP-foto van maximaal 12 MB.');
+        const bitmap = await createImageBitmap(file);
+        try {
+          const scale = Math.min(1, 256 / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+          const context = canvas.getContext('2d');
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+          if (!blob || blob.size > 160_000)
+            throw new Error(
+              'Deze foto kan niet klein genoeg worden gemaakt. Kies een andere foto.'
+            );
+          const image = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('De foto kon niet worden gelezen.'));
+            reader.readAsDataURL(blob);
+          });
+          if (selection !== memberPhotoSelection) return;
+          $('#edit-form [name="avatar"]').value = image;
+          $('#edit-form [name="avatar_changed"]').value = 'true';
+          $('#member-avatar-preview').innerHTML = avatar({ ...x, avatar_url: image });
+          $('#remove-member-avatar').hidden = false;
+          state.dialogDirty = true;
+        } finally {
+          bitmap.close();
+        }
+      })().catch((error) => {
+        if (selection !== memberPhotoSelection) return;
+        memberPhotoError = error;
+        errorInForm(error);
+      });
+    };
+    $('#remove-member-avatar').onclick = () => {
+      memberPhotoSelection++;
+      memberPhotoTask = Promise.resolve();
+      memberPhotoError = null;
+      $('#member-avatar-file').value = '';
+      $('#edit-form [name="avatar"]').value = '';
+      $('#edit-form [name="avatar_changed"]').value = 'true';
+      $('#member-avatar-preview').innerHTML = avatar({ ...x, avatar: '', avatar_url: '' });
+      $('#remove-member-avatar').hidden = true;
+      state.dialogDirty = true;
+    };
+  }
   const bindIconField = (iconFieldElement) => {
     const trigger = iconFieldElement.querySelector('.task-icon-trigger'),
       picker = iconFieldElement.querySelector('.task-icon-picker'),
       search = picker.querySelector('.task-icon-search'),
+      fieldLabel = iconFieldElement.querySelector('.task-icon-label').textContent,
       options = [...picker.querySelectorAll('[data-task-icon]')],
       noResults = picker.querySelector('.task-icon-no-results');
     trigger.onclick = () => {
       picker.hidden = !picker.hidden;
+      iconFieldElement.classList.toggle('task-icon-field-open', !picker.hidden);
       trigger.setAttribute('aria-expanded', String(!picker.hidden));
       if (!picker.hidden) {
         const content = $('#dialog-content'),
@@ -137,6 +211,7 @@ export function editEntity(kind, item) {
         e.preventDefault();
         e.stopPropagation();
         picker.hidden = true;
+        iconFieldElement.classList.remove('task-icon-field-open');
         trigger.setAttribute('aria-expanded', 'false');
         trigger.focus();
       }
@@ -147,10 +222,15 @@ export function editEntity(kind, item) {
           iconFieldElement.querySelector('input[type="hidden"]').value = button.dataset.taskIcon;
           iconFieldElement.querySelector('.task-icon-current').textContent =
             button.dataset.taskIcon;
+          trigger.setAttribute(
+            'aria-label',
+            `Kies pictogram voor ${fieldLabel.toLowerCase()}; huidig: ${button.dataset.taskIcon}`
+          );
           options.forEach((option) =>
             option.setAttribute('aria-pressed', String(option === button))
           );
           picker.hidden = true;
+          iconFieldElement.classList.remove('task-icon-field-open');
           trigger.setAttribute('aria-expanded', 'false');
           trigger.focus();
           state.dialogDirty = true;
@@ -207,34 +287,44 @@ export function editEntity(kind, item) {
     requestId = uuid();
   let previousPayload = '',
     retryId = requestId;
-  bindForm(async (f) => {
-    let body = Object.fromEntries(f);
-    if (isTask || isRoutine) {
-      body.members = f.getAll('members');
-      body.weekdays = f.getAll('weekdays').map(Number);
-      body.points = Number(f.get('points'));
-      if (isRoutine)
-        body.steps = f.getAll('step_text').map((text, index) => ({
-          text,
-          icon: f.getAll('step_icon')[index] || '✓'
-        }));
-    }
-    if (kind === 'groceries') body.done = x.done || false;
-    if (isReward) body.price = Number(f.get('price'));
-    const payload = JSON.stringify(body);
-    if (previousPayload && previousPayload !== payload) retryId = uuid();
-    previousPayload = payload;
-    await mutate(
-      kind,
-      {
-        id,
-        version: item?.version || 0
-      },
-      body,
-      'save',
-      retryId
-    );
-  });
+  bindForm(
+    async (f) => {
+      if (kind === 'members') {
+        await memberPhotoTask;
+        if (memberPhotoError) throw memberPhotoError;
+        f.set('avatar', $('#edit-form [name="avatar"]').value);
+        f.set('avatar_changed', $('#edit-form [name="avatar_changed"]').value);
+      }
+      let body = Object.fromEntries(f);
+      if (isTask || isRoutine) {
+        body.members = f.getAll('members');
+        body.weekdays = f.getAll('weekdays').map(Number);
+        body.points = Number(f.get('points'));
+        if (isRoutine)
+          body.steps = f.getAll('step_text').map((text, index) => ({
+            text,
+            icon: f.getAll('step_icon')[index] || '✓'
+          }));
+      }
+      if (kind === 'groceries') body.done = x.done || false;
+      if (isReward) body.price = Number(f.get('price'));
+      const payload = JSON.stringify(body);
+      if (previousPayload && previousPayload !== payload) retryId = uuid();
+      previousPayload = payload;
+      await mutate(
+        kind,
+        {
+          id,
+          version: item?.version || 0
+        },
+        body,
+        'save',
+        retryId
+      );
+    },
+    undefined,
+    ['members', 'rewards'].includes(kind) ? actions.openAdmin : undefined
+  );
   if (item)
     $('#delete-entity').onclick = async () => {
       if (
@@ -260,6 +350,7 @@ export function editEntity(kind, item) {
         state.dialogDirty = false;
         $('#dialog').close();
         await actions.refresh(true);
+        if (['members', 'rewards'].includes(kind)) await actions.openAdmin();
       } catch (e) {
         errorInForm(e);
       }

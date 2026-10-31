@@ -88,8 +88,15 @@ def test_navigation_responsive_UI01_09(dashboard, size):
     p = dashboard
     p.set_viewport_size(dict(zip(("width", "height"), size)))
     if size[0] >= 761:
-        tabs = p.locator(".main-tabs").bounding_box()
-        assert tabs["x"] + tabs["width"] / 2 == pytest.approx(size[0] / 2, abs=1)
+        navigation = p.locator(".header-navigation").bounding_box()
+        assert navigation["x"] + navigation["width"] / 2 == pytest.approx(size[0] / 2, abs=1)
+        logo = p.locator(".brandmark").bounding_box()
+        clock = p.locator("#analog-clock").bounding_box()
+        assert clock["height"] == pytest.approx(logo["height"], abs=1)
+        assert (
+            p.locator("#clock-toggle").evaluate("element => getComputedStyle(element).marginRight")
+            == "0px"
+        )
     else:
         header = p.locator(".topbar").bounding_box()
         nav = p.locator(".main-tabs")
@@ -246,14 +253,24 @@ def test_analog_clock_and_next_agenda_item_IM13(dashboard, size):
         return
     expect(clock).to_be_visible()
     assert p.locator("#calendar-date").locator("#analog-clock").count() == 0
-    p.wait_for_function("""() => Math.abs(
-        document.querySelector('#analog-clock').getBoundingClientRect().height -
-        document.querySelector('#calendar-date').getBoundingClientRect().height
-    ) < 1""")
+    p.wait_for_function("""() => {
+      const logo = document.querySelector('.brandmark');
+      const style = getComputedStyle(logo);
+      const logoHeight = logo.getBoundingClientRect().height ||
+        Number.parseFloat(style.height) * new DOMMatrixReadOnly(style.transform).d;
+      return Math.abs(
+        document.querySelector('#analog-clock').getBoundingClientRect().height - logoHeight
+      ) < 1;
+    }""")
     clock_box = clock.bounding_box()
     date_box = p.locator("#calendar-date").bounding_box()
-    assert 0 <= date_box["x"] - clock_box["x"] - clock_box["width"] <= 12
-    assert clock_box["height"] == pytest.approx(date_box["height"], abs=1)
+    assert 0 <= date_box["x"] - clock_box["x"] - clock_box["width"] <= 24
+    logo_height = p.locator(".brandmark").evaluate("""element => {
+      const style = getComputedStyle(element);
+      return element.getBoundingClientRect().height ||
+        Number.parseFloat(style.height) * new DOMMatrixReadOnly(style.transform).d;
+    }""")
+    assert clock_box["height"] == pytest.approx(logo_height, abs=1)
     expect(p.locator("#clock-numerals text")).to_have_count(12)
     assert set(p.locator("#clock-numerals text").all_text_contents()) == set(
         ["12", *map(str, range(1, 12))]
@@ -317,7 +334,45 @@ def test_iphone13_touch_navigation_and_settings(browser, playwright, server, dev
         assert p.locator("#dialog").evaluate("(el) => el.scrollWidth <= el.clientWidth")
         p.get_by_label("Na inactiviteit").fill("2")
         p.get_by_role("button", name="Opslaan op dit scherm").tap()
-        expect(p.locator("#dialog")).not_to_be_visible()
+        expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+        p.get_by_role("button", name="Sluiten", exact=True).click()
+
+
+@pytest.mark.parametrize("size", [(390, 664), (1440, 1000)])
+def test_profile_photos_fit_round_avatars(dashboard, size):
+    p = dashboard
+    p.set_viewport_size({"width": size[0], "height": size[1]})
+    login(p)
+    add_member(p)
+
+    def assert_round_photos():
+        images = p.locator(".avatar img:visible")
+        assert images.count() > 0
+        for image in images.all():
+            expect(image).to_have_js_property("complete", True)
+            assert image.evaluate("""img => {
+                const avatar = img.parentElement;
+                const style = getComputedStyle(avatar);
+                const photo = getComputedStyle(img);
+                const box = img.getBoundingClientRect();
+                return img.naturalWidth > 0 && style.borderRadius === '50%'
+                    && style.overflowX === 'hidden' && style.overflowY === 'hidden'
+                    && photo.objectFit === 'cover'
+                    && Math.abs(box.width - box.height) < 1
+                    && Math.abs(box.width - avatar.clientWidth) < 1
+                    && Math.abs(box.height - avatar.clientHeight) < 1;
+            }""")
+
+    # Family filter and header; settings list and upload preview; child welcome.
+    assert_round_photos()
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    assert_round_photos()
+    p.locator("[data-admin-member]").click()
+    assert_round_photos()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
+    p.locator("[data-child-profile]").click()
+    expect(p.locator(".child-welcome .avatar img")).to_be_visible()
+    assert_round_photos()
 
 
 def test_admin_profile_lifecycle_GEZ01_05(dashboard):
@@ -330,12 +385,29 @@ def test_admin_profile_lifecycle_GEZ01_05(dashboard):
     p.get_by_label("Beheerwachtwoord").fill("fictional-playwright-password")
     p.get_by_role("button", name="Ontgrendelen").click()
     add_member(p)
-    expect(p.locator("[data-member]").filter(has_text="Alex")).to_contain_text("🌻")
+    expect(
+        p.locator("[data-member]").filter(has_text="Alex").locator(".avatar img")
+    ).to_be_visible()
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
     p.locator("[data-admin-member]").click()
     p.get_by_label("Naam", exact=True).fill("Robin")
-    save(p)
+    p.get_by_role("button", name="Opslaan", exact=True).click()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     expect(p.locator("[data-member]").filter(has_text="Robin")).to_be_visible()
+    expect(
+        p.locator("[data-member]").filter(has_text="Robin").locator(".avatar img")
+    ).to_be_visible()
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    p.locator("[data-admin-member]").click()
+    p.get_by_role("button", name="Foto verwijderen", exact=True).click()
+    expect(p.locator("#member-avatar-preview img")).to_have_count(0)
+    p.get_by_role("button", name="Opslaan", exact=True).click()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
+    expect(
+        p.locator("[data-member]").filter(has_text="Robin").locator(".avatar img")
+    ).to_have_count(0)
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
     p.get_by_role("button", name="Vergrendelen").click()
     assert p.request.get(p.url + "api/admin/settings").status == 401
@@ -390,7 +462,8 @@ def test_admin_tabs_preserve_unsaved_settings(dashboard):
     expect(p.get_by_label("Na inactiviteit")).to_have_value("4")
     assert p.locator("#dialog").evaluate("(el) => el.scrollWidth <= el.clientWidth")
     p.get_by_role("button", name="Opslaan op dit scherm").click()
-    expect(p.locator("#dialog")).not_to_be_visible()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     assert p.evaluate("JSON.parse(localStorage.getItem('samen-screen')).idle") == 4
 
 
@@ -416,6 +489,8 @@ def test_branding_can_be_customized_from_admin(dashboard):
     expect(p.locator("#brand-caption")).to_have_text("Samen thuis")
     expect(p.locator(".brandmark img")).to_be_visible()
     assert p.locator(".brandmark img").get_attribute("src").startswith("/brand-image/")
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
 
 
 def test_immich_album_selection_uses_popup_and_shows_only_chosen(dashboard):
@@ -589,6 +664,30 @@ def test_task_assignment_repeat_undo_history_TK01_04(dashboard, mode, count):
     expect(p.locator(".task-row")).to_have_count(1)
     p.get_by_role("button", name="Historie bekijken").click()
     expect(p.locator(".history-item").filter(has_text="Voortgang")).to_have_count(2)
+
+
+def test_task_mode_edit_removes_duplicate_from_overview(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    section(p, "Taken")
+    p.get_by_role("button", name="Nieuwe taak", exact=True).click()
+    p.get_by_label("Titel", exact=True).fill("Kattenbak schoonmaken")
+    p.get_by_label("Alex", exact=True).check()
+    p.get_by_label("Uitvoering").select_option("individual")
+    save(p)
+    expect(p.locator(".task-row")).to_have_count(1)
+    p.get_by_role("button", name="Voltooi Kattenbak schoonmaken").click()
+    p.get_by_role("button", name="Heropen Kattenbak schoonmaken").click()
+    p.get_by_role("button", name="Taak bewerken").click()
+    p.get_by_label("Uitvoering").select_option("shared")
+    save(p)
+    expect(p.locator(".task-row")).to_have_count(1)
+    p.reload()
+    section(p, "Taken")
+    expect(p.locator(".task-row")).to_have_count(1)
+    p.get_by_role("button", name="Voltooi Kattenbak schoonmaken").click()
+    expect(p.get_by_role("button", name="Heropen Kattenbak schoonmaken")).to_have_count(1)
 
 
 def test_task_edit_updates_overview(dashboard):
@@ -799,6 +898,58 @@ def test_calendar_positions_events_on_duration_based_timeline(dashboard):
     )
 
 
+@pytest.mark.parametrize("size", [(390, 664), (1440, 1000)])
+def test_task_editor_spacing_is_consistent_when_adding_and_editing(dashboard, size):
+    p = dashboard
+    p.set_viewport_size(dict(zip(("width", "height"), size)))
+    login(p)
+    add_member(p)
+    section(p, "Taken")
+    p.get_by_role("button", name="Nieuwe taak", exact=True).click()
+
+    for editing in (False, True):
+        for repeat in ("once", "weekly"):
+            p.locator('#edit-form select[name="repeat"]').select_option(repeat)
+            gaps = p.locator(".task-editor").evaluate("""form => {
+                const rect = element => element.getBoundingClientRect();
+                const children = [...form.children].filter(el => !el.hidden);
+                const result = children.slice(1).map((el, i) =>
+                    rect(el).top - rect(children[i]).bottom);
+                for (const grid of form.querySelectorAll('.form-grid')) {
+                    const rows = [...grid.children];
+                    for (let i = 1; i < rows.length; i++) {
+                        if (rect(rows[i]).top >= rect(rows[i - 1]).bottom)
+                            result.push(rect(rows[i]).top - rect(rows[i - 1]).bottom);
+                    }
+                }
+                return result;
+            }""")
+            assert gaps == pytest.approx([16] * len(gaps), abs=0.5)
+            for label in p.locator(".form-grid label").all():
+                expect(label).to_have_css("gap", "8px")
+            for selector, control in (
+                (".task-icon-label", ".task-icon-trigger"),
+                (".entity-members-field > label", ".member-chips"),
+                (".weekday-field > label", ".weekdays"),
+            ):
+                label = p.locator(selector)
+                if label.is_visible():
+                    label_box = label.bounding_box()
+                    control_box = p.locator(control).bounding_box()
+                    assert control_box["y"] - label_box["y"] - label_box["height"] == pytest.approx(
+                        8
+                    )
+            title_box = p.get_by_label("Titel", exact=True).bounding_box()
+            icon_box = p.locator(".task-icon-trigger").bounding_box()
+            assert title_box["y"] == pytest.approx(icon_box["y"], abs=0.5)
+        if not editing:
+            p.get_by_label("Titel", exact=True).fill("Consistente marges")
+            p.get_by_label("Alex", exact=True).check()
+            save(p)
+            p.get_by_role("button", name="Taak bewerken").click()
+    p.screenshot(path=f"/tmp/task-editor-spacing-{size[0]}.png")
+
+
 def test_task_icon_is_selected_from_relevant_choices(dashboard):
     p = dashboard
     login(p)
@@ -839,6 +990,45 @@ def test_task_icon_is_selected_from_relevant_choices(dashboard):
     p.keyboard.press("Escape")
     expect(p.locator(".task-icon-picker")).to_be_hidden()
     expect(p.locator(".task-icon-trigger")).to_contain_text("🧹")
+
+
+def test_media_icons_are_shared_across_all_icon_pickers(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    expected = {
+        "📺": "Televisie",
+        "📻": "Radio",
+        "🎧": "Muziek luisteren",
+    }
+
+    def picker_values(index=0):
+        return (
+            p.locator(".task-icon-picker")
+            .nth(index)
+            .locator("[data-task-icon]")
+            .evaluate_all(
+                "buttons => buttons.map(button => [button.dataset.taskIcon, button.getAttribute('aria-label')])"
+            )
+        )
+
+    section(p, "Taken")
+    p.get_by_role("button", name="Nieuwe taak", exact=True).click()
+    task_values = picker_values(0)
+    assert all([emoji, label] in task_values for emoji, label in expected.items())
+    p.locator("#close-dialog").click()
+
+    section(p, "Routines")
+    p.get_by_role("button", name="Nieuwe routine", exact=True).click()
+    routine_values = picker_values(0)
+    assert routine_values == task_values
+    p.locator(".routine-step-row .task-icon-trigger").click()
+    assert picker_values(1) == task_values
+    p.locator("#close-dialog").click()
+
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    p.get_by_role("button", name="Beloning toevoegen").click()
+    assert picker_values() == task_values
 
 
 def test_routine_progress_new_day_RT01_04(dashboard):
@@ -1023,7 +1213,8 @@ def test_ha_custom_dashboard_is_embedded_without_entity_api(dashboard):
     p.get_by_label("Serveradres", exact=True).fill("http://homeassistant.example.test:8123")
     p.get_by_label("Dashboardpad", exact=True).fill("/dashboard-family/overview")
     p.get_by_role("button", name="Instellingen opslaan").click()
-    expect(p.locator("#dialog")).not_to_be_visible()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     p.get_by_role("button", name="Home Assistant", exact=True).click()
     frame = p.locator("#ha-dashboard")
     expect(frame).to_be_visible()
@@ -1152,7 +1343,8 @@ def test_idle_guards_IM09_11(dashboard, guard):
     open_device_settings(p)
     p.get_by_label("Na inactiviteit").fill("1")
     p.get_by_role("button", name="Opslaan op dit scherm").click()
-    expect(p.locator("#dialog")).not_to_be_visible()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     if guard == "draft":
         section(p, "Boodschappen")
         p.get_by_role("textbox", name="Boodschap", exact=True).fill("Concept")
@@ -1172,7 +1364,8 @@ def test_preferences_local_SYS08(dashboard, browser, server):
     p.get_by_label("Na inactiviteit").fill("3")
     p.get_by_label("Foto’s beeldvullend uitsnijden").check()
     p.get_by_role("button", name="Opslaan op dit scherm").click()
-    expect(p.locator("#dialog")).not_to_be_visible()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     p.reload()
     open_device_settings(p)
     expect(p.get_by_label("Na inactiviteit")).to_have_value("3")
@@ -1341,7 +1534,9 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     p.get_by_role("button", name="Beloning toevoegen").click()
     p.get_by_label("Naam", exact=True).fill("Filmavond")
     p.get_by_label("Prijs in punten").fill("4")
-    save(p)
+    p.get_by_role("button", name="Opslaan", exact=True).click()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
 
     section(p, "Beloningen")
     p.get_by_role("button", name="Aanvragen").click()
@@ -1365,7 +1560,11 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
     p = dashboard
     p.set_viewport_size({"width": 390, "height": 664})
     login(p)
+    add_member(p, "Ouder", role="Ouder")
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
     add_member(p, "Alex")
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    add_member(p, "Sam")
 
     section(p, "Taken")
     p.get_by_role("button", name="Nieuwe taak", exact=True).click()
@@ -1388,18 +1587,32 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
     p.locator("[data-member]").filter(has_text="Alex").click()
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
     p.get_by_role("button", name="Beloning toevoegen").click()
+    p.locator(".task-icon-trigger").click()
+    p.get_by_role("searchbox", name="Zoek pictogrammen").fill("verjaardag")
+    p.get_by_role("button", name="Taart", exact=True).click()
+    expect(p.locator(".task-icon-trigger")).to_contain_text("🍰")
     p.get_by_label("Naam", exact=True).fill("Film kiezen")
     p.get_by_label("Prijs in punten").fill("5")
-    save(p)
+    p.get_by_role("button", name="Opslaan", exact=True).click()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    p.get_by_role("button", name="Sluiten", exact=True).click()
 
     section(p, "Agenda")
-    p.get_by_role("button", name="Kindmodus", exact=True).click()
-    expect(p.get_by_role("heading", name="Wie ben jij?")).to_be_visible()
+    expect(p.locator(".child-profile-switcher .child-profile-button")).to_have_count(2)
+    expect(p.locator(".child-profile-switcher")).to_be_visible()
+    gap = p.evaluate("""() => {
+      const profiles = document.querySelector('#child-profile-switcher').getBoundingClientRect();
+      const tabs = document.querySelector('.main-tabs').getBoundingClientRect();
+      return tabs.left - profiles.right;
+    }""")
+    assert 0 <= gap <= 8
+    p.get_by_role("button", name="Kindmodus voor Alex", exact=True).click()
+    expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
     expect(p.locator(".main-tabs")).to_be_hidden()
     expect(p.locator("#admin")).to_be_hidden()
-    p.locator("[data-child-member]").filter(has_text="Alex").click()
 
     expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
+    expect(p.locator(".child-welcome .child-exit svg")).to_have_count(1)
     assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for button in p.locator("button:visible").all():
         bounds = button.bounding_box()
@@ -1409,6 +1622,7 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
     expect(p.get_by_role("button", name="Voltooi Speelgoed opruimen")).to_be_visible()
     expect(p.get_by_role("button", name="Nog 5 nodig")).to_be_disabled()
     expect(p.get_by_text("Nog 5 sterren voor Film kiezen")).to_be_visible()
+    expect(p.locator(".child-reward-icon")).to_have_text("🍰")
 
     p.get_by_role("button", name="Voltooi Speelgoed opruimen").click()
     task = p.locator(".child-task").filter(has_text="Speelgoed opruimen")

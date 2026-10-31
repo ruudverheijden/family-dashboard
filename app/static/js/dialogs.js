@@ -58,7 +58,7 @@ export function errorInForm(err) {
       : '');
   $('#form-error').classList.remove('hidden');
 }
-export function bindForm(fn, afterSave) {
+export function bindForm(fn, afterSave, onSaved) {
   $('#edit-form').onsubmit = async (e) => {
     e.preventDefault();
     const buttons = e.target.querySelectorAll('button');
@@ -69,6 +69,7 @@ export function bindForm(fn, afterSave) {
       state.dialogDirty = afterSave ? afterSave() : false;
       if (!state.dialogDirty) $('#dialog').close();
       await actions.refresh(true);
+      if (onSaved) await onSaved();
       toast('Opgeslagen');
     } catch (err) {
       errorInForm(err);

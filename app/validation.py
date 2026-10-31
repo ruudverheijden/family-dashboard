@@ -1,5 +1,8 @@
 """Entity normalization and validation. No HTTP or application startup dependencies."""
 
+import base64
+import binascii
+import re
 import uuid
 from datetime import date
 
@@ -14,17 +17,40 @@ def text_field(data, key, maximum=200, required=False):
     return value.strip()
 
 
+def member_avatar(value):
+    if not isinstance(value, str):
+        raise DomainError(422, "Upload een geldige profielfoto.")
+    if value == "":
+        return ""
+    if len(value) <= 8 and not value.startswith("data:"):
+        return value.strip()
+    if len(value) > 220_000:
+        raise DomainError(422, "De profielfoto is ongeldig of te groot.")
+    match = re.fullmatch(r"data:image/jpeg;base64,([A-Za-z0-9+/]*={0,2})", value)
+    if not match:
+        raise DomainError(422, "Upload een geldige JPEG-profielfoto.")
+    try:
+        image = base64.b64decode(match.group(1), validate=True)
+    except (ValueError, binascii.Error):
+        raise DomainError(422, "Upload een geldige JPEG-profielfoto.")
+    if len(image) > 160_000 or not image.startswith(b"\xff\xd8\xff"):
+        raise DomainError(422, "De profielfoto is ongeldig of te groot.")
+    return value
+
+
 def validate(kind, data, db):
     if kind == "members":
-        import re
-
+        role = data.get("role", "child")
+        if role not in ("child", "parent"):
+            raise DomainError(422, "Kies of dit gezinslid een kind of ouder is.")
         color = text_field(data, "color", 7, True)
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
             raise DomainError(422, "Ongeldige kleur.")
         return {
             "name": text_field(data, "name", 60, True),
             "color": color,
-            "avatar": text_field(data, "avatar", 8),
+            "avatar": member_avatar(data.get("avatar", "")),
+            "role": role,
         }
     if kind == "groceries":
         if not isinstance(data.get("done", False), bool):
@@ -98,8 +124,6 @@ def validate(kind, data, db):
         ]
         if len(result["steps"]) != len(steps):
             raise DomainError(422, "Ongeldige stappen.")
-        import re
-
         for field in ("start_time", "end_time"):
             value = text_field(data, field, 5, True)
             if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value):

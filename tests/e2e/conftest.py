@@ -81,11 +81,27 @@ def login(page):
     expect(page.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
 
 
-def add_member(page, name="Alex"):
+def add_member(page, name="Alex", role="Kind"):
     page.get_by_role("button", name="Gezinslid toevoegen").click()
     page.get_by_label("Naam", exact=True).fill(name)
-    page.get_by_label("Avatar").fill("🌻")
-    save(page)
+    page.locator('#edit-form select[name="role"]').select_option(
+        "child" if role == "Kind" else "parent"
+    )
+    page.evaluate("""async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 8;
+      canvas.getContext('2d').fillRect(0, 0, 8, 8);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([blob], 'profile.png', {type: 'image/png'}));
+      const input = document.querySelector('#member-avatar-file');
+      input.files = transfer.files;
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+    }""")
+    expect(page.locator("#member-avatar-preview img")).to_be_visible()
+    page.get_by_role("button", name="Opslaan", exact=True).click()
+    expect(page.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    page.get_by_role("button", name="Sluiten", exact=True).click()
 
 
 def save(page):

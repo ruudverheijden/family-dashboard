@@ -88,7 +88,10 @@ setInterval(() => {
   updateHeaderDate();
   if (state.data) updateCurrentTimeIndicator();
 }, 1000);
-window.addEventListener('resize', syncAgendaColumnWidths);
+window.addEventListener('resize', () => {
+  syncAgendaColumnWidths();
+  syncClockToAgendaBlock();
+});
 new ResizeObserver(syncClockToAgendaBlock).observe($('#calendar-date'));
 syncClockToAgendaBlock();
 matchMedia('(max-width:760px)').addEventListener('change', (event) => {

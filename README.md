@@ -42,20 +42,59 @@ sla onderstaande configuratie op als `compose.yaml`:
 
 ```yaml
 services:
+  storage-init:
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    user: "0:0"
+    command:
+      - python
+      - -c
+      - |
+        import os, stat
+        def fail(error):
+            raise error
+        for directory in ("/data", "/cache"):
+            for _, _, files, parent in os.fwalk(directory, follow_symlinks=False, onerror=fail):
+                os.fchown(parent, 10001, 10001)
+                os.fchmod(parent, 0o700)
+                for name in files:
+                    if not stat.S_ISREG(os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode):
+                        continue
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+                    try:
+                        info = os.fstat(fd)
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                            raise RuntimeError("Opslag bevat een onveilig bestand of hardlink")
+                        os.fchown(fd, 10001, 10001)
+                        os.fchmod(fd, 0o600)
+                    finally:
+                        os.close(fd)
+    volumes: &storage
+      - ${DATA_VOLUME:-family-data}:/data
+      - ${CACHE_VOLUME:-family-cache}:/cache
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true
+    restart: "no"
   dashboard:
-    image: ruudv/family-dashboard:0.1.0
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
     ports:
       - "${PORT:-8080}:8080"
     environment:
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Stel ADMIN_PASSWORD in}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Stel ADMIN_PASSWORD in via .env}
       TZ: ${TZ:-Europe/Amsterdam}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       CACHE_MB: ${CACHE_MB:-128}
       DATA_DIR: /data
       CACHE_DIR: /cache
-    volumes:
-      - family-data:/data
-      - family-cache:/cache
+    volumes: *storage
     restart: unless-stopped
     init: true
     read_only: true
@@ -64,7 +103,6 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-
 volumes:
   family-data:
   family-cache:
@@ -105,6 +143,66 @@ NAS is voor deze configuratie niet nodig. Bij een private Docker Hub-repository
 moet je eerst Docker Hub met je account toevoegen aan de registries in Portainer.
 Voor installatie door anderen zonder account moet de image-repository publiek zijn.
 
+Voor Portainer en de opdrachtregel gebruik je hetzelfde [compose.yaml](compose.yaml).
+Er is geen apart Portainer-bestand nodig. Standaard gebruikt het Docker-volumes.
+Wil je eigen hostmappen, stel dan in Portainer **beide** variabelen in op absolute
+paden van de Docker-host:
+
+```dotenv
+DATA_VOLUME=/srv/family-dashboard/data
+CACHE_VOLUME=/srv/family-dashboard/cache
+```
+
+Dit zijn generieke voorbeelden: vervang ze door je eigen bestaande opslagpaden.
+Stel `PORT` in op de poort waarop je bestaande installatie bereikbaar is.
+**Bij overstappen van een oudere Portainer-configuratie:** behoud dezelfde stacknaam,
+zet de bestaande `source` van `/data` in `DATA_VOLUME`, die van `/cache` in
+`CACHE_VOLUME`, en behoud `PORT` en `ADMIN_PASSWORD`. De oude `STORAGE_ROOT`-variabele
+wordt niet meer gebruikt. Zonder de padvariabelen gebruikt Compose de standaardvolumes;
+je bestaande gegevens worden dan niet automatisch meegenomen.
+
+Gebruik aparte lokale mappen voor deze applicatie. Bij de korte volumesyntax kan
+Docker een ontbrekende hostmap automatisch aanmaken; controleer de paden dus vóór
+deployment om een onbedoelde lege installatie te voorkomen. Eigen paden en geheimen
+horen uitsluitend in je lokale `.env` of Portainer, niet in de gedeelde YAML.
+
+### Waarom een tijdelijke opslagcontainer?
+
+De service `storage-init` bereidt bij deployment beide opslagmappen inclusief
+submappen en gewone bestanden voor: UID/GID 10001, maprechten 0700 en bestandsrechten
+0600. Dit voorkomt de SQLite-opstartfout bij lege hostmappen die van een andere
+gebruiker zijn, zonder handmatig `chown` uit te voeren. Hiervoor draait alleen
+de korte voorbereidingsservice als root, met uitsluitend `CHOWN`, `FOWNER` en `DAC_OVERRIDE`, zonder
+netwerk of beheerwachtwoord. Het dashboard wacht op een geslaagde voorbereiding en
+blijft als gewone gebruiker draaien, zonder extra capabilities.
+`storage-init` met status **Exited (0)** is normaal; de container blijft zichtbaar
+als gestopte service. Hij is tijdelijk actief en wordt niet automatisch verwijderd.
+Alleen `dashboard` blijft actief.
+
+We houden deze werkende oplossing aan om de extra rechten buiten de webappcontainer
+te houden en dezelfde bestaande image te kunnen gebruiken. Het is een bewuste afweging:
+de Compose-configuratie krijgt één service en een opstartafhankelijkheid erbij.
+Een opstartscript binnen de image is ook mogelijk, maar is voor deze installatie niet
+nodig. Dit is geen verplicht Docker-patroon en de hulpservice is geen databaseserver.
+
+Er hoeft geen database klaar te staan: het dashboard maakt `family.db` met het schema
+en lege begininstellingen zelf aan. Bestaande databasebestanden worden niet vervangen.
+Ook een teruggezette database en eventuele SQLite-nevenbestanden krijgen de juiste
+eigenaar en rechten. De inhoud blijft ongewijzigd. Stop het dashboard voordat je een
+consistente databaseback-up terugzet en laat daarna `storage-init` opnieuw uitvoeren
+door de stack te deployen. Zie [Back-up en herstel](#back-up-en-herstel).
+
+De voorbereiding volgt geen symbolische links en slaat speciale bestanden over.
+Hardlinks naar gewone bestanden worden geweigerd, zodat een eigenaarswijziging niet
+via een gedeelde inode buiten de opslag doorwerkt. `DAC_OVERRIDE` is alleen tijdens
+de voorbereiding nodig om ook afgeschermde submappen en teruggezette bestanden te
+kunnen openen. Gebruik daarom uitsluitend eigen opslagmappen voor deze applicatie.
+Als het bestandssysteem eigenaarswijzigingen weigert (bijvoorbeeld door NAS-ACL's of
+een netwerkshare), faalt de voorbereiding en start het dashboard niet. Controleer
+dan de logs van `storage-init` en de NAS-rechten; SQLite hoort op lokale NAS-opslag.
+Deze opstartafhankelijkheid vereist Docker Compose / Portainer Docker Standalone,
+niet Docker Swarm.
+
 ### Opslag, bestaande instellingen en updates
 
 `/data` bevat de SQLite-database met gezinsgegevens, gezamenlijke instellingen en
@@ -136,7 +234,8 @@ Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux
 3. Start in de projectmap:
 
    ```sh
-   docker compose up -d --build
+   BUILDX_GIT_INFO=false docker build -t family-dashboard:local .
+   DASHBOARD_IMAGE=family-dashboard:local docker compose up -d --pull never
    docker compose ps
    ```
 
@@ -149,6 +248,8 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | Instelling | Plaats | Betekenis |
 |---|---|---|
 | `ADMIN_PASSWORD` | `.env` | Beheerwachtwoord; wijzigen vereist containerherstart |
+| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.1.0` |
+| `DATA_VOLUME`, `CACHE_VOLUME` | `.env` / Portainer | Optionele absolute hostpaden; standaard benoemde Docker-volumes |
 | `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
 | `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
 | Tijdzone | Beheer | Functionele agenda-/uitvoeringstijdzone, standaard Europe/Amsterdam |
@@ -227,6 +328,7 @@ Herstel naar een lege installatie, vanuit de projectmap:
 ```sh
 docker compose stop dashboard
 docker compose run --rm --no-deps --user root \
+  --cap-add DAC_OVERRIDE --cap-add CHOWN --cap-add FOWNER \
   -v "$(pwd)/backups:/restore:ro" dashboard \
   python -c "import pathlib,shutil,os; p=pathlib.Path('/data/family.db'); assert not p.exists(), 'Doel is niet leeg'; shutil.copyfile('/restore/family-backup.db',p); os.chown(p,10001,10001); os.chmod(p,0o600)"
 docker compose up -d
@@ -234,9 +336,13 @@ docker compose up -d
 
 Gebruik voor herstel een leeg datavolume. Behoud de oude installatie tot je de nieuwe hebt gecontroleerd. Controleer daarna gezinsleden, boodschappen, routinevoortgang en integraties. De applicatietest herstelt de back-up naar een lege map en verifieert gegevens én integratieconfiguratie. De Docker-volumeprocedure moet nog op een draaiende Docker-host worden uitgevoerd.
 
+Alleen deze korte herstelopdracht krijgt extra bestandsrechten om een privéback-up
+te lezen, naar de afgeschermde datamap te kopiëren en UID/GID 10001 in te stellen.
+Het dashboard zelf behoudt zijn gewone gebruiker en verwijderde capabilities.
+
 ## Updates en ontwikkeling
 
-Bij een installatie vanuit broncode: maak eerst een back-up. Vervang de broncode door de gewenste versie en voer `docker compose up -d --build` uit. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
+Bij een installatie vanuit broncode: maak eerst een back-up. Vervang de broncode door de gewenste versie, bouw opnieuw met `BUILDX_GIT_INFO=false docker build -t family-dashboard:local .` en start met `DASHBOARD_IMAGE=family-dashboard:local docker compose up -d --pull never`. Zet voor latere beheeropdrachten ook `DASHBOARD_IMAGE=family-dashboard:local` in je lokale `.env`. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
 
 Databaseschema: versie 2 via `PRAGMA user_version`; bestaande versie-1-databases krijgen bij starten automatisch de tabellen voor punten en beloningsaanvragen. De applicatie weigert een database met een nieuwere schemaversie. Downgraden na migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
 
@@ -252,6 +358,8 @@ export ADMIN_PASSWORD='kies-een-uniek-lokaal-wachtwoord'
 
 De `export`-regel is alleen nodig als je geen `.env` gebruikt of tijdelijk een andere waarde wilt instellen.
 
+De ontwikkelserver met `--reload` herstart het applicatieproces wanneer Python-bronbestanden wijzigen. Beheersessies staan in het geheugen van dat proces en worden dan gewist; je moet daarna opnieuw aanmelden. De automatische browserverversing van het dashboard vraagt alleen publieke gegevens op en wist of verlengt de beheersessie niet.
+
 De uitgebreide Playwright-acceptatietests, browsermatrix en koppeling aan de oorspronkelijke requirements staan in [docs/TESTING.md](docs/TESTING.md). Deze tests draaien met afzonderlijke tijdelijke gegevens.
 
 Voor ontwikkelchecks installeer je `.venv/bin/pip install -r requirements-dev.txt` en voer je `.venv/bin/ruff check .` uit. JavaScript-opmaak wordt gecontroleerd met `npm ci --ignore-scripts` en `npm run format:check`; Node/npm zijn alleen ontwikkelhulpmiddelen. De projectbrede Definition of Done staat in [AGENTS.md](AGENTS.md); de PR-template bevat dezelfde verificatiechecklist.
@@ -261,6 +369,29 @@ Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-
 ## Publieke distributie
 
 Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. De broncode staat op [GitHub](https://github.com/ruudverheijden/family-dashboard) en de gebouwde amd64-image op [Docker Hub](https://hub.docker.com/r/ruudv/family-dashboard). De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
+
+Voor een Docker Hub-release bouw je opnieuw vanuit de huidige broncode. De Docker-context
+sluit ook geneste Python-cachebestanden uit: die kunnen lokale gebruikersnamen en paden
+bevatten. Gebruik onderstaande opdracht om daarnaast de automatische Git-bronmetadata
+(waaronder de repository-URL met accountnaam) weg te laten:
+
+```sh
+BUILDX_GIT_INFO=false docker build --pull -t family-dashboard:release .
+```
+
+De Dockerfile gebruikt Python 3.12 op Alpine 3.23 met musl en installeert beschikbare
+Alpine-updates plus minimaal `zlib 1.3.2-r1`. Daarmee is CVE-2026-85091 verholpen;
+glibc (CVE-2026-84243) is niet aanwezig. Bestaande gepubliceerde images worden hierdoor
+niet bijgewerkt: bouw en publiceer een nieuwe versietag en vervang daarna de container
+met behoud van de volumes. De eerder gepubliceerde tag `0.1.0` bevat deze wijziging niet.
+Zie [containerverificatie](docs/VERIFICATION.md) voor de uitgevoerde scans en tests.
+
+Tag daarna dit nieuwe image met je Docker Hub-repository en versienummer. Publiceer geen
+eerder gebouwd image of export van een draaiende container met gezinsgegevens. De naam van
+je Docker Hub-account/repository blijft zichtbaar bij publicatie. Git-commits bevatten
+afzonderlijk de auteursnaam en het e-mailadres; bepaal vóór openbare bronpublicatie of je
+die wilt delen. De uitgevoerde controle en grenzen staan in
+[docs/PRIVACY_AUDIT.md](docs/PRIVACY_AUDIT.md).
 
 
 ## Licentie

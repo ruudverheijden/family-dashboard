@@ -47,13 +47,13 @@ Status betekent:
 | UI-09 | P0 | Bij wisselen van tabblad relevante toestand behouden, zoals de geselecteerde kalenderdatum. | Gereed |
 | UI-10 | P0 | Niet-opgeslagen invoer beschermen tegen onbedoeld verlies. | Gereed |
 | UI-11 | P0 | Gezinsleden herkenbaar maken met naam en kleur; kleur mag niet het enige onderscheid zijn. | Gereed |
-| UI-12 | P0 | Een optionele kindmodus binnen de kalender toont één gekozen gezinslid alleen de taken, routines en beloningen van vandaag, met grote bediening en zichtbare voltooiing. Verberg hoofdnavigatie en ouderbeheer; herstel bij verlaten de eerdere plannerweergave. Dit is een vereenvoudigde bediening, geen beveiligingsgrens of authenticatie. | Gereed |
+| UI-12 | P0 | Een optionele kindmodus is via een ronde avatar-knop per kinderprofiel links van de hoofdtabs bereikbaar. De knop opent direct het profiel en toont uitsluitend de taken, routines en beloningen van vandaag, met grote bediening en zichtbare voltooiing. Gezinsleden hebben de rol kind of ouder; alleen kinderen kunnen de kindmodus openen. Verberg hoofdnavigatie en ouderbeheer; herstel bij verlaten de eerdere plannerweergave. Dit is een vereenvoudigde bediening, geen beveiligingsgrens of authenticatie. | Gereed |
 
 ## 4. Gezinsprofielen en toegang
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| GEZ-01 | P0 | Gezinsleden beheren met naam, kleur en optionele avatar. | Gereed |
+| GEZ-01 | P0 | Gezinsleden beheren met naam, kleur en optionele profielfoto. Profielfoto’s vullen hun ronde avatar met behoud van verhouding en worden aan de cirkelrand afgeknipt. | Gereed |
 | GEZ-02 | P0 | Gezamenlijke overzichten en filtering per gezinslid. | Gereed |
 | GEZ-03 | P0 | Onderscheid tussen beheerrechten en dagelijkse bediening op een gedeeld scherm. | Gereed |
 | GEZ-04 | P0 | Profielkeuze zonder herhaald inloggen op het gedeelde scherm; profielkeuze geldt niet als authenticatie. | Gereed |
@@ -80,10 +80,10 @@ Geen afzonderlijke ICS-import of leveranciersspecifieke agenda- en schoolkoppeli
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| TK-01 | P0 | Taken met titel, icoon, beschrijving, verantwoordelijke, datum en optionele punten. | Gereed |
+| TK-01 | P0 | Taken met titel, icoon, beschrijving, verantwoordelijke, datum en optionele punten. De toevoeg-/bewerkpopup gebruikt 8 px tussen labels en invoer en 16 px tussen veldgroepen. | Gereed |
 | TK-02 | P0 | Eenmalige en herhalende taken, met een aparte voltooiingsstatus per uitvoering. | Gereed |
 | TK-03 | P0 | Afvinken, ongedaan maken en historie bewaren. | Gereed |
-| TK-04 | P0 | Bij meerdere verantwoordelijken kiezen tussen individuele uitvoeringen en één gezamenlijke uitvoering. | Gereed |
+| TK-04 | P0 | Bij meerdere verantwoordelijken kiezen tussen individuele uitvoeringen en één gezamenlijke uitvoering. Na wijziging van deze keuze verdwijnen vervangen open uitvoeringen uit het overzicht zodra een uitvoering met de nieuwe verdeling voor dezelfde dag bestaat; afgeronde uitvoeringen en historie blijven behouden. | Gereed |
 | RT-01 | P0 | Routines maken uit geordende stappen met pictogram en tekst. | Gereed |
 | RT-02 | P0 | Routines toewijzen aan gezinsleden, weekdagen en tijdvensters. | Gereed |
 | RT-03 | P0 | Voortgang per persoon en uitvoering tonen. Nieuwe uitvoeringen beginnen opnieuw zonder historie te wijzigen. | Gereed |
@@ -152,16 +152,20 @@ Tijdens implementatie vaststellen of het bestaande dashboard betrouwbaar kan wor
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| DEP-01 | P0 | De volledige applicatie wordt via Docker Compose gestart, inclusief eventuele database. | Deels: configuratie aanwezig; containerstart niet uitgevoerd |
+| DEP-01 | P0 | De volledige applicatie wordt via Docker Compose gestart, inclusief eventuele database. | Lokaal geverifieerd met lege opslag en echte Compose-services; fysieke NAS-acceptatie open |
 | DEP-02 | P0 | Geen afhankelijkheid van NAS-specifieke apps, paden, API’s of besturingssystemen. | Gereed (configuratie-/codecontrole) |
 | DEP-03 | P0 | Containerimages ondersteunen Linux amd64 en arm64; dezelfde configuratieopzet geldt voor beide. | Deels: CI-configuratie aanwezig; builds niet uitgevoerd |
 | DEP-04 | P0 | Frontend wordt vanuit de containeropstelling aangeboden; clients hebben alleen een ondersteunde browser nodig. | Deels: container-runtime niet geverifieerd |
-| DEP-05 | P0 | Persistente opslag voor gegevens en configuratie; cache afzonderlijk begrensd en vervangbaar. | Deels: configuratie aanwezig; Docker-volumeherstel open |
+| DEP-05 | P0 | Persistente opslag voor gegevens en configuratie; cache afzonderlijk begrensd en vervangbaar. | Containervervanging behoudt instellingen in Docker-volumes en Linux-bind-mounts; Docker-volumeherstel open |
 | DEP-06 | P0 | Configureerbare poorten, volumes, serviceadressen en tijdzone. | Gereed (configuratie aanwezig) |
 | DEP-07 | P0 | Automatisch herstarten en healthchecks. | Gereed (Compose-configuratie aanwezig) |
 | DEP-08 | P0 | Geen privileged-modus of toegang tot de Docker-socket vereist. | Gereed (Compose-configuratie gecontroleerd) |
 | DEP-09 | P0 | Installatie vereist geen ontwikkeltools op de host. | Gereed (Compose-installatie beschreven) |
 | DEP-10 | P0 | Minimale hostvereisten en ondersteunde browsers documenteren op basis van verificatie. | Deels: minimumvereisten en volledige browserondersteuning nog vaststellen |
+| DEP-11 | P0 | De vervangende containerimage bevat de zlib-fix voor CVE-2026-85091 en geen kwetsbare glibc voor CVE-2026-84243. | Lokaal geverifieerd op amd64/arm64 met Alpine/musl en zlib 1.3.2-r1; publicatie en Docker Hub-herscan open |
+| DEP-12 | P0 | Eerste installatie start met lege lokale data- en cachemappen zonder vooraf gekopieerde database of handmatige eigenaarswijziging. Een aparte voorbereidingsservice stelt de maprechten in; de app draait daarna als UID/GID 10001 en behoudt bestaande gegevens. | Lokaal geverifieerd met root-owned volumes en Linux-bind-mounts op gepubliceerde 0.1.0 en beide security-images (amd64/arm64); fysieke NAS-acceptatie open |
+| DEP-13 | P0 | Eén Compose-bestand voor opdrachtregel en Portainer, met configureerbare image en optionele absolute opslagpaden; geen privéconfiguratie in gedeelde YAML. | Lokaal geverifieerd met beide opslagvormen en de gepubliceerde image; voorbeelden identiek aan compose.yaml; nieuwe versie nog niet op NAS uitgevoerd |
+| DEP-14 | P0 | De opslagvoorbereiding herstelt ook de eigenaar en rechten van teruggezette bestanden en submappen, zonder inhoud te wijzigen of symbolische links te volgen. Hardlinks naar gewone bestanden worden geweigerd. | Geautomatiseerd geverifieerd op gepubliceerde 0.1.0 met volumes en Linux-bind-mounts; inhoud en instellingen behouden, links niet gevolgd en hardlinks geweigerd; NAS-acceptatie open |
 
 “Platformonafhankelijk” betekent ondersteuning van de gedocumenteerde Docker- en browseromgevingen, zonder productspecifieke hardwarevereisten.
 
@@ -192,7 +196,7 @@ Voorgestelde prestatiedoelen onder gedocumenteerde testomstandigheden:
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| GH-01 | P0 | Broncode bevat geen persoonlijke gegevens, echte serveradressen, geheimen of privéfoto’s. | Deels: voorbeelden zijn fictief; controle vóór publicatie open |
+| GH-01 | P0 | Broncode bevat geen persoonlijke gegevens, echte serveradressen, geheimen of privéfoto’s. | Bron en lokale image gecontroleerd op 31 oktober; bytecodelek hersteld. Git-auteursmetadata bevat persoonsgegevens; zie PRIVACY_AUDIT.md |
 | GH-02 | P0 | Voorbeeldconfiguratie met placeholders en uitsluitend fictieve demonstratiegegevens. | Gereed (bestandscontrole) |
 | GH-03 | P0 | README met functies, installatie, configuratie, updates, back-up/herstel en bekende beperkingen. | Gereed |
 | GH-04 | P0 | Reproduceerbare build en geautomatiseerde controles voor relevante applicatielogica en containerbuilds. | Deels: workflows aanwezig; CI/containerbuild niet op GitHub uitgevoerd |
@@ -232,10 +236,10 @@ Herhalingssjablonen en concrete uitvoeringen van taken en routines worden afzond
 | 9 | Uitval van CalDAV, Home Assistant of Immich blokkeert de overige onderdelen niet. | Deels: foutfixtures getest; echte integraties werken handmatig, maar live uitval niet getest |
 | 10 | Automatisch wisselen naar Immich respecteert actieve invoer en behoudt de tabnavigatie. | Gereed in browsertests; langdurige fysieke schermtest open |
 | 11 | De toepassing start met de gedocumenteerde Compose-configuratie op amd64 en arm64. | Open: containerstart en architectuurbouw niet uitgevoerd |
-| 12 | Containervervanging behoudt opgeslagen gegevens. | Open: Docker-runtime niet getest |
+| 12 | Containervervanging behoudt opgeslagen gegevens. | Lokaal geverifieerd met fictieve instellingen, benoemde volumes en Linux-bind-mounts; fysieke NAS-acceptatie open |
 | 13 | Een back-up kan naar een lege installatie worden hersteld. | Deels: SQLite-herstel getest; Docker-volumeherstel open |
 | 14 | Beheerinstellingen en integratiegeheimen zijn niet toegankelijk vanuit onbevoegde dagelijkse bediening. | Deels: API- en login-tests geslaagd; echte HA-rechten en distributiecontrole open |
-| 15 | De publieke repository en distributie bevatten uitsluitend veilige voorbeeldgegevens. | Deels: voorbeelden zijn fictief; eindcontrole/publicatie open |
+| 15 | De publieke repository en distributie bevatten uitsluitend veilige voorbeeldgegevens. | Deels: bron/geschiedenis en lokaal image gecontroleerd; Git-auteursmetadata beoordelen en definitieve publicatie open |
 
 ## 16. Resterende TODO’s
 

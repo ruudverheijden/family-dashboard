@@ -1,8 +1,15 @@
-FROM python:3.12-slim
+FROM python:3.12-alpine3.23
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data CACHE_DIR=/cache
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && useradd --uid 10001 --create-home family && mkdir /data /cache && chown family:family /data /cache
+# Alpine uses musl (no glibc); require the CVE-2026-85091 zlib security fix.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache 'zlib>=1.3.2-r1' tzdata \
+    && pip install --no-cache-dir -r requirements.txt \
+    && addgroup -g 10001 family \
+    && adduser -D -u 10001 -G family family \
+    && mkdir /data /cache \
+    && chown family:family /data /cache
 COPY app ./app
 COPY LICENSE ./LICENSE
 LABEL org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"

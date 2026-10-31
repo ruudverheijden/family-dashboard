@@ -2,6 +2,8 @@
 
 import asyncio
 import base64
+import binascii
+import json
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -81,6 +83,30 @@ def get_brand_image(version: int, rt=Depends(runtime)):
     if version != cfg["version"] or not cfg["brand_image"]:
         raise HTTPException(404, "Gezinsfoto niet beschikbaar.")
     image = base64.b64decode(cfg["brand_image"].partition(",")[2], validate=True)
+    return Response(
+        image,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/member-avatar/{member_id}/{version}")
+def get_member_avatar(member_id: str, version: int, rt=Depends(runtime)):
+    if not _uuid(member_id):
+        raise HTTPException(404, "Profielfoto niet beschikbaar.")
+    with rt.database.connect() as db:
+        row = db.execute(
+            "SELECT version,body FROM entities WHERE kind=? AND id=?", ("members", member_id)
+        ).fetchone()
+    if not row or version != row["version"]:
+        raise HTTPException(404, "Profielfoto niet beschikbaar.")
+    avatar = json.loads(row["body"]).get("avatar", "")
+    if not avatar.startswith("data:image/jpeg;base64,"):
+        raise HTTPException(404, "Profielfoto niet beschikbaar.")
+    try:
+        image = base64.b64decode(avatar.partition(",")[2], validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(404, "Profielfoto niet beschikbaar.")
     return Response(
         image,
         media_type="image/jpeg",

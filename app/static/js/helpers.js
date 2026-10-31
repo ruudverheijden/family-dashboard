@@ -48,14 +48,16 @@ export const today = () =>
 export const person = (id) => state.data.members.find((m) => m.id === id);
 export const personName = (id) => (id === 'shared' ? 'Samen' : person(id)?.name || 'Gezin');
 export const initials = (name) =>
-  name
+  String(name || '')
     .split(' ')
     .map((x) => x[0])
     .slice(0, 2)
     .join('')
     .toUpperCase();
-export const avatar = (m) =>
-  `<span class="avatar" style="background:${esc(m.color)}20;color:${esc(m.color)}">${esc(m.avatar || initials(m.name))}</span>`;
+export const avatar = (m) => {
+  const color = esc(m.color || '#b97b63');
+  return `<span class="avatar" style="background:${color}20;color:${color}">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" alt="">` : esc(m.avatar || initials(m.name))}</span>`;
+};
 export const selected = (a, b) => (a === b ? ' selected' : '');
 export function empty(title, desc, i, button = '') {
   return `<div class="panel empty"><span class="empty-icon">${icon(i)}</span><h3>${title}</h3><p>${desc}</p>${button}</div>`;

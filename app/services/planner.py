@@ -64,9 +64,28 @@ def catch_up(db):
 
 def read_runs(db, start_day, end_day=None):
     end_day = end_day or start_day
-    return [
+    runs = [
         {**dict(r), "body": json.loads(r["body"]), "done": json.loads(r["done"])}
         for r in db.execute(
             "SELECT * FROM runs WHERE day BETWEEN ? AND ? ORDER BY day,rowid", (start_day, end_day)
+        )
+    ]
+    task_modes = {task["id"]: task["mode"] for task in entities(db, "tasks")}
+    replacements = {
+        (run["template_id"], run["day"])
+        for run in runs
+        if run["kind"] == "tasks" and run["body"]["mode"] == task_modes.get(run["template_id"])
+    }
+    # A mode edit can materialize a second set of executions for the same day.
+    # Hide superseded, open executions only when their replacement exists.
+    # Keep snapshots, completion/undo history and the points ledger in storage.
+    return [
+        run
+        for run in runs
+        if not (
+            run["kind"] == "tasks"
+            and not run["done"]
+            and run["body"]["mode"] != task_modes.get(run["template_id"])
+            and (run["template_id"], run["day"]) in replacements
         )
     ]

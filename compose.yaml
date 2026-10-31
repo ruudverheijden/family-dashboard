@@ -1,6 +1,47 @@
 services:
+  storage-init:
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    user: "0:0"
+    command:
+      - python
+      - -c
+      - |
+        import os, stat
+        def fail(error):
+            raise error
+        for directory in ("/data", "/cache"):
+            for _, _, files, parent in os.fwalk(directory, follow_symlinks=False, onerror=fail):
+                os.fchown(parent, 10001, 10001)
+                os.fchmod(parent, 0o700)
+                for name in files:
+                    if not stat.S_ISREG(os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode):
+                        continue
+                    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+                    try:
+                        info = os.fstat(fd)
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                            raise RuntimeError("Opslag bevat een onveilig bestand of hardlink")
+                        os.fchown(fd, 10001, 10001)
+                        os.fchmod(fd, 0o600)
+                    finally:
+                        os.close(fd)
+    volumes: &storage
+      - ${DATA_VOLUME:-family-data}:/data
+      - ${CACHE_VOLUME:-family-cache}:/cache
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      disable: true
+    restart: "no"
   dashboard:
-    build: .
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    depends_on:
+      storage-init:
+        condition: service_completed_successfully
     ports:
       - "${PORT:-8080}:8080"
     environment:
@@ -10,9 +51,7 @@ services:
       CACHE_MB: ${CACHE_MB:-128}
       DATA_DIR: /data
       CACHE_DIR: /cache
-    volumes:
-      - family-data:/data
-      - family-cache:/cache
+    volumes: *storage
     restart: unless-stopped
     init: true
     read_only: true

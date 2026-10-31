@@ -204,7 +204,7 @@ export function calendarShell() {
     : !state.data.tasks.some((task) => !task.archived)
       ? `<section class="setup-guide"><div><h2>Jullie agenda is klaar voor de eerste plannen</h2><p>Voeg een taak toe; die verschijnt vanzelf op de geplande dag. CalDAV is optioneel voor privéafspraken.</p></div><div class="setup-actions"><button class="primary" data-new="tasks">${icon('plus')}Eerste taak toevoegen</button><button class="secondary small" data-action="admin">CalDAV koppelen (optioneel)</button></div></section>`
       : '';
-  return `${datebar}<div class="calendar-layout"><section class="family-filter panel" aria-label="Gezinsfilter"><h2 class="section-label">Ons gezin</h2><div class="family-list" role="group" aria-label="Filter agenda op gezinslid"><button class="person ${!state.member ? 'active' : ''}" data-member="" aria-pressed="${!state.member}"><span class="avatar">${icon('people')}</span>Iedereen${!state.member ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>${state.data.members.map((m) => `<button class="person ${state.member === m.id ? 'active' : ''}" data-member="${m.id}" aria-pressed="${state.member === m.id}">${avatar(m)}${esc(m.name)}${state.member === m.id ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>`).join('')}</div><button class="secondary child-mode-start" data-child-mode="enter" ${state.data.members.length ? '' : 'disabled'}>${icon('sun')}Kindmodus</button></section>${guide}<section class="workspace"><nav class="subnav" aria-label="Gezinsplanner">${[
+  return `${datebar}<div class="calendar-layout"><section class="family-filter panel" aria-label="Gezinsfilter"><h2 class="section-label">Ons gezin</h2><div class="family-list" role="group" aria-label="Filter agenda op gezinslid"><button class="person ${!state.member ? 'active' : ''}" data-member="" aria-pressed="${!state.member}"><span class="avatar">${icon('people')}</span>Iedereen${!state.member ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>${state.data.members.map((m) => `<button class="person ${state.member === m.id ? 'active' : ''}" data-member="${m.id}" aria-pressed="${state.member === m.id}">${avatar(m)}${esc(m.name)}${state.member === m.id ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>`).join('')}</div></section>${guide}<section class="workspace"><nav class="subnav" aria-label="Gezinsplanner">${[
     ['agenda', 'Agenda', 'calendar', ''],
     ['tasks', 'Taken', 'tasks', openTasks],
     ['routines', 'Routines', 'routine', '']
@@ -555,7 +555,13 @@ export function routinesView() {
   return `<div class="toolbar"><button class="primary" data-new="routines">${icon('plus')}Nieuwe routine</button></div><div class="routine-grid">${cards}</div><div class="toolbar" style="margin-top:20px"><button class="subtle-button" data-action="templates-routines">Routinesjablonen beheren</button><button class="subtle-button" data-action="history">${icon('history')}Historie bekijken</button></div>`;
 }
 export function syncClockToAgendaBlock() {
-  const height = $('#calendar-date').getBoundingClientRect().height;
+  const brandmark = $('.brandmark');
+  const brandmarkStyle = getComputedStyle(brandmark);
+  const brandScale = new DOMMatrixReadOnly(brandmarkStyle.transform).d;
+  const height =
+    brandmark.getBoundingClientRect().height ||
+    Number.parseFloat(brandmarkStyle.height) * brandScale ||
+    $('#calendar-date').getBoundingClientRect().height;
   if (height > 0) {
     $('#analog-clock').style.width = `${height}px`;
     $('#analog-clock').style.height = `${height}px`;

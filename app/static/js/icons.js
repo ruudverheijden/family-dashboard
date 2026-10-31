@@ -28,6 +28,8 @@ export const icon = (name) =>
   `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.calendar}"/></svg>`;
 export const taskIcons = [
   ['✓', 'Standaard'],
+  ['☀️', 'Zon'],
+  ['🎁', 'Cadeau'],
   ['🧹', 'Vegen'],
   ['🧽', 'Schoonmaken'],
   ['🧼', 'Zeep'],
@@ -208,6 +210,14 @@ export const extraTaskIcons = [
   ['🍿', 'Popcorn', 'Eten en drinken', ['film', 'snack', 'popcorn']],
   ['🍰', 'Taart', 'Eten en drinken', ['bakken', 'gebak', 'verjaardag']],
   ['🎭', 'Toneel', 'School en creativiteit', ['theater', 'toneelspelen', 'verkleden']],
+  ['📺', 'Televisie', 'School en creativiteit', ['tv', 'televisie kijken', 'programma kijken']],
+  ['📻', 'Radio', 'School en creativiteit', ['radio luisteren', 'luisteren naar de radio']],
+  [
+    '🎧',
+    'Muziek luisteren',
+    'School en creativiteit',
+    ['muziek', 'koptelefoon', 'hoofdtelefoon', 'luisteren']
+  ],
   ['🪇', 'Muziek maken', 'School en creativiteit', ['muziek', 'instrument', 'maracas']],
   ['🎻', 'Viool', 'School en creativiteit', ['muziek', 'instrument', 'viool spelen']],
   ['🏸', 'Badminton', 'Sport en buiten', ['sport', 'racket', 'badminton']],
@@ -270,7 +280,7 @@ export const taskIconCategoryRules = [
   ],
   [
     'Natuur en dieren',
-    /Plant|Tuinieren|Bloemen|Bladeren|Hond|Kat|Pootafdrukken|Vis|Vogel|Hondenbot|Eenhoorn|Dinosaurus|Kikker|Panda|Schildpad|Dolfijn|Bij/
+    /Zon|Plant|Tuinieren|Bloemen|Bladeren|Hond|Kat|Pootafdrukken|Vis|Vogel|Hondenbot|Eenhoorn|Dinosaurus|Kikker|Panda|Schildpad|Dolfijn|Bij/
   ],
   [
     'Verzorging en gezondheid',
@@ -287,7 +297,7 @@ export const taskIconCategoryRules = [
   ],
   [
     'Smileys en beloningen',
-    /Blij|Lach|Cool|Super|Feest vieren|Sterk|Goed gedaan|Hart|Ster|Regenboog|Oranje hart|Glimlach|Knuffel|Engel|Hartjeshanden|Zwaaien|Bedanken|Trofee/
+    /Cadeau|Blij|Lach|Cool|Super|Feest vieren|Sterk|Goed gedaan|Hart|Ster|Regenboog|Oranje hart|Glimlach|Knuffel|Engel|Hartjeshanden|Zwaaien|Bedanken|Trofee/
   ],
   ['Spel en plezier', /Speelgoed|Puzzel|Eenhoorn|Dinosaurus|Gamen|Spelletje|Feest/],
   [
