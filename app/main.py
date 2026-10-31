@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -114,7 +116,7 @@ async def background():
     while True:
         await asyncio.to_thread(catch_up_background)
         await asyncio.gather(asyncio.to_thread(integrations.sync_calendars), asyncio.to_thread(integrations.sync_photos))
-        await asyncio.sleep(120)
+        await asyncio.sleep(integrations.CALENDAR_SYNC_INTERVAL)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -363,7 +365,9 @@ def state(day: str | None = None, period: str = 'day'):
             'runs': read_runs(db, start_day.isoformat(), end_day.isoformat()),
             'events': [e for r in db.execute('SELECT body FROM calendars') for e in json.loads(r[0])],
             'status': statuses,
-            'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds')} | {
+            'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds', 'brand_title', 'brand_subtitle')} | {
+                'brand_image': bool(cfg['brand_image']),
+                'brand_version': cfg['version'],
                 'caldav_configured': bool(cfg['caldav']),
             },
             'photos': list(integrations.assets.values()),
@@ -655,6 +659,11 @@ def save_settings(body: dict):
         try:
             ZoneInfo(body.get('timezone', 'Europe/Amsterdam'))
             cfg = {k: body.get(k, old[k]) for k in ('timezone', 'ha_url', 'ha_dashboard', 'immich_url', 'albums', 'slide_seconds')}
+            cfg.update({
+                'brand_title': text_field({'brand_title': body.get('brand_title', old['brand_title'])}, 'brand_title', 40, True),
+                'brand_subtitle': text_field({'brand_subtitle': body.get('brand_subtitle', old['brand_subtitle'])}, 'brand_subtitle', 80),
+                'brand_image': validate_brand_image(body.get('brand_image', old['brand_image'])),
+            })
             if cfg['ha_url']:
                 cfg['ha_url'] = integrations.valid_url(cfg['ha_url'])
                 parsed = urlsplit(cfg['ha_url'])
@@ -709,6 +718,35 @@ def _uuid(value):
         return True
     except (ValueError, TypeError, AttributeError):
         return False
+
+def validate_brand_image(value):
+    if value == '':
+        return ''
+    if not isinstance(value, str) or len(value) > 540_000:
+        raise HTTPException(422, 'De gezinsfoto is ongeldig of te groot.')
+    match = re.fullmatch(r'data:image/jpeg;base64,([A-Za-z0-9+/]*={0,2})', value)
+    if not match:
+        raise HTTPException(422, 'Upload een geldige JPEG-afbeelding.')
+    try:
+        image = base64.b64decode(match.group(1), validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(422, 'Upload een geldige JPEG-afbeelding.')
+    if len(image) > 400_000 or not image.startswith(b'\xff\xd8\xff'):
+        raise HTTPException(422, 'De gezinsfoto is ongeldig of te groot.')
+    return value
+
+@app.get('/brand-image/{version}')
+def get_brand_image(version: int):
+    with connect() as db:
+        cfg = settings(db)
+    if version != cfg['version'] or not cfg['brand_image']:
+        raise HTTPException(404, 'Gezinsfoto niet beschikbaar.')
+    image = base64.b64decode(cfg['brand_image'].partition(',')[2], validate=True)
+    return Response(
+        image,
+        media_type='image/jpeg',
+        headers={'Cache-Control': 'public, max-age=31536000, immutable'},
+    )
 
 @app.post('/api/admin/discover/{service}', dependencies=[Depends(admin)])
 def discover(service: str, body: dict):

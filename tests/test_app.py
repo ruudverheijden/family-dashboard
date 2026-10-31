@@ -44,6 +44,22 @@ def create(c, kind, body, id=None, version=0, request_id=None, action='save'):
     result = c.post('/api/entities/' + kind, json={'request_id': request_id or str(uuid.uuid4()), 'id': id, 'version': version, 'body': body, 'action': action})
     return id, result
 
+def test_calendar_sync_is_limited_to_three_minutes(monkeypatch):
+    now = [1000]
+    calls = []
+    monkeypatch.setattr(integrations, '_last_calendar_sync', None)
+    monkeypatch.setattr(integrations, '_sync_calendars', lambda: calls.append(now[0]))
+    monkeypatch.setattr(integrations.time, 'monotonic', lambda: now[0])
+
+    integrations.sync_calendars()
+    now[0] += integrations.CALENDAR_SYNC_INTERVAL - 1
+    integrations.sync_calendars()
+    assert calls == [1000]
+
+    now[0] += 1
+    integrations.sync_calendars()
+    assert calls == [1000, 1000 + integrations.CALENDAR_SYNC_INTERVAL]
+
 def setup_task(c, mode='individual', kind='tasks', members=1):
     people = [create(c, 'members', {'name': f'Persoon {i}', 'color': '#aa7755'})[0] for i in range(members)]
     today = c.get('/api/state').json()['day']
@@ -64,6 +80,39 @@ def test_admin_and_secret_isolation(client):
     assert client.get('/api/admin/settings').status_code == 401
     assert create(client, 'members', {'name':'No', 'color':'#ffffff'})[1].status_code == 401
     assert client.post('/api/admin/sync').status_code == 401
+
+def test_branding_settings_are_saved_and_publicly_served(client):
+    cfg = client.get('/api/admin/settings').json()
+    assert cfg['brand_title'] == 'samen'
+    assert cfg['brand_subtitle'] == 'een plek voor ons allemaal'
+    assert cfg['brand_image'] == ''
+    cfg.update(
+        brand_title='Familie Jansen',
+        brand_subtitle='Samen thuis',
+        brand_image='data:image/jpeg;base64,/9j/',
+    )
+    assert client.post('/api/admin/settings', json=cfg).status_code == 200
+
+    state = client.get('/api/state').json()
+    assert state['config']['brand_title'] == 'Familie Jansen'
+    assert state['config']['brand_subtitle'] == 'Samen thuis'
+    assert state['config']['brand_image'] is True
+    image = client.get(f"/brand-image/{state['config']['brand_version']}")
+    assert image.status_code == 200
+    assert image.headers['content-type'] == 'image/jpeg'
+    assert image.content == b'\xff\xd8\xff'
+    assert client.get('/brand-image/0').status_code == 404
+
+@pytest.mark.parametrize(('field', 'value'), [
+    ('brand_title', 'x' * 41),
+    ('brand_subtitle', 'x' * 81),
+    ('brand_image', 'data:image/svg+xml;base64,PHN2Zz4='),
+    ('brand_image', 'data:image/jpeg;base64,dGVzdA=='),
+])
+def test_invalid_branding_settings_are_rejected(client, field, value):
+    cfg = client.get('/api/admin/settings').json()
+    cfg[field] = value
+    assert client.post('/api/admin/settings', json=cfg).status_code == 422
 
 def test_cross_origin_rejected(client):
     assert client.post('/api/logout', headers={'Origin':'https://evil.example'}).status_code == 403
@@ -501,6 +550,9 @@ def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
     from types import SimpleNamespace
     real = integrations
     monkeypatch.setattr(real,'CACHE',db.DATA.parent/'cache')
+    now = [1000]
+    monkeypatch.setattr(real, '_last_calendar_sync', None)
+    monkeypatch.setattr(real.time, 'monotonic', lambda: now[0])
     account={'id':str(uuid.uuid4()),'url':'http://calendar.example.org','username':'test','password':'secret','calendars':[{'url':'http://calendar.example.org/a/','name':'Gezin','member':''}]}
     with db.connect() as c:
         cfg=db.settings(c)
@@ -516,6 +568,10 @@ def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
         url='http://calendar.example.org/a/'
         def search(self,**kwargs): return resources
     monkeypatch.setattr(real,'client',lambda a:Fake())
+    def sync_after_interval():
+        now[0] += real.CALENDAR_SYNC_INTERVAL
+        SYNC_CALENDARS()
+
     SYNC_CALENDARS()
     state=client.get('/api/state').json()
     assert len(state['events'])==1
@@ -523,12 +579,12 @@ def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
     assert calendar_status['calendars']==[{'name':'Gezin'}]
     assert calendar_status['last_success']
     resources[:]=[SimpleNamespace(data=raw.replace('Afspraak','Gewijzigd'))]
-    SYNC_CALENDARS()
+    sync_after_interval()
     state=client.get('/api/state').json()
     assert state['events'][0]['title']=='Gewijzigd'
     last_success=state['status']['caldav:'+account['id']]['last_success']
     monkeypatch.setattr(real,'client',lambda a:(_ for _ in ()).throw(OSError('private server data')))
-    SYNC_CALENDARS()
+    sync_after_interval()
     state=client.get('/api/state').json()
     assert len(state['events'])==1 and state['status']['caldav:'+account['id']]['ok'] is False
     assert state['status']['caldav:'+account['id']]['last_success']==last_success
@@ -536,7 +592,7 @@ def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
     assert 'private server data' not in json.dumps(state)
     monkeypatch.setattr(real,'client',lambda a:Fake())
     resources.clear()
-    SYNC_CALENDARS()
+    sync_after_interval()
     assert client.get('/api/state').json()['events']==[]
 
 def test_immich_album_revocation_and_bounded_cache(client, monkeypatch):

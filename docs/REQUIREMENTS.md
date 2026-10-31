@@ -30,7 +30,7 @@ Status betekent:
 - **Open**: implementatie, besluit of acceptatie staat nog open.
 - **Buiten scope**: bewust geen functionaliteit of opleveractie voor deze versie.
 
-**Statussamenvatting op 31 oktober 2026:** van de 95 requirement-ID’s zijn er 65 gereed, 23 deels gereed (verdere acceptatie open) en 7 bewust uitgesteld als P1. Er is geen P0-ID zonder implementatie; de resterende P0-TODO’s zijn acceptatie- en verificatiewerk.
+**Statussamenvatting op 31 oktober 2026:** van de 95 requirement-ID’s zijn er 70 gereed, 19 deels gereed (verdere acceptatie open) en 6 bewust uitgesteld als P1. De eigenaar heeft de agenda-integratie, Immich en Home Assistant handmatig gevalideerd. Er is geen P0-ID waarvan de kernfunctionaliteit nog gebouwd moet worden; resterende P0-TODO’s zijn aanvullende randgevallen en technische acceptatie.
 
 ## 3. Navigatie en responsive interface
 
@@ -62,12 +62,12 @@ Status betekent:
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| AG-01 | P0 | Dag-, 3-daags en weekoverzicht met gezinsleden, kleuren en filters. Toon lokale taken altijd bovenaan op de juiste datum, visueel gescheiden van afspraken. Toon een scrollbaar 24-uursrooster met afspraken op hun tijd en hoogte naar duur; open rond de huidige tijd met 2 uur terug en 4 uur vooruit. Hele-dagafspraken blijven apart zichtbaar. | Gereed |
-| AG-02 | P0 | Optioneel één of meer CalDAV-accounts configureren via serveradres en inloggegevens voor privéafspraken. | Deels: echte CalDAV-serveracceptatie open |
-| AG-03 | P0 | Beschikbare agenda’s ophalen, selecteren en aan gezinsleden koppelen. | Deels: echte CalDAV-serveracceptatie open |
-| AG-04 | P0 | Afspraken, herhalingen, uitzonderingen, hele-dagafspraken en tijdzones correct verwerken. | Deels: fixtures gedekt; echte-serveracceptatie open |
-| AG-05 | P0 | Nieuwe, gewijzigde en verwijderde afspraken synchroniseren zonder duplicaten. | Deels: lokale synchronisatielogica getest; echte-serveracceptatie open |
-| AG-06 | P0 | Laatste succesvolle synchronisatie en fouten tonen; eerder opgehaalde gegevens bij storingen behouden. | Deels: foutbehoud getest; echte-serveracceptatie open |
+| AG-01 | P0 | Dag-, 3-daags en weekoverzicht met gezinsleden, kleuren en filters. Toon lokale taken altijd bovenaan op de juiste datum, visueel gescheiden van afspraken. Toon een scrollbaar 24-uursrooster met afspraken op hun tijd en hoogte naar duur; open rond de huidige tijd met 2 uur terug en 4 uur vooruit, en markeer de huidige tijd op de tijdlijn. Hele-dagafspraken blijven apart zichtbaar. | Gereed |
+| AG-02 | P0 | Optioneel één of meer CalDAV-accounts configureren via serveradres en inloggegevens voor privéafspraken. | Gereed (handmatig door gebruiker gevalideerd) |
+| AG-03 | P0 | Beschikbare agenda’s ophalen, selecteren en aan gezinsleden koppelen. | Gereed (handmatig door gebruiker gevalideerd) |
+| AG-04 | P0 | Afspraken, herhalingen, uitzonderingen, hele-dagafspraken en tijdzones correct verwerken. | Deels: integratie handmatig bevestigd; randgevallen via fixtures getest, niet allemaal live geaccepteerd |
+| AG-05 | P0 | Nieuwe, gewijzigde en verwijderde afspraken synchroniseren zonder duplicaten. | Deels: integratie handmatig bevestigd; alle wijzigings-/duplicaatgevallen niet afzonderlijk bevestigd |
+| AG-06 | P0 | Laatste succesvolle synchronisatie en fouten tonen; eerder opgehaalde gegevens bij storingen behouden. | Deels: foutbehoud getest; live storingsgedrag niet afzonderlijk bevestigd |
 | AG-07 | P0 | Voor gekoppelde privéafspraken is CalDAV de bron en wordt lokaal een gesynchroniseerde kopie bewaard. Taken en routines zijn lokale gegevens en vereisen geen CalDAV. | Gereed |
 | AG-08 | P0 | Inloggegevens uitsluitend server-side gebruiken. | Gereed |
 | AG-09 | P1 | Maandoverzicht en herinneringen. | Open (P1) |
@@ -119,9 +119,9 @@ De gedeelde boodschappenlijst is onderdeel van de eerste versie en staat los van
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| HA-01 | P0 | Een Home Assistant-weergave binnen het eigen tabblad, met behoud van de vaste hoofdnavigatie. | Deels: echte HA-login en iframe-acceptatie open |
+| HA-01 | P0 | Een Home Assistant-weergave binnen het eigen tabblad, met behoud van de vaste hoofdnavigatie. | Gereed (handmatig door gebruiker gevalideerd) |
 | HA-02 | P0 | Serveradres en dashboard configureerbaar; geen hardgecodeerde apparaten of entiteiten. | Gereed |
-| HA-03 | P0 | Aanmelding en bediening werken zonder de gezinsapp te verlaten. | Deels: echte HA-login en iframe-acceptatie open |
+| HA-03 | P0 | Aanmelding en bediening werken zonder de gezinsapp te verlaten. | Gereed (handmatig door gebruiker gevalideerd) |
 | HA-04 | P0 | Een storing blijft beperkt tot dit onderdeel; Kalender en Immich blijven bereikbaar. | Gereed |
 | HA-05 | P0 | Gevoelige acties en beheerrechten niet standaard ontsluiten op een gedeeld scherm. | Deels: rechten-/iframe-gedrag met echte HA-installatie controleren |
 | HA-06 | P1 | Geselecteerde bediening rechtstreeks integreren, zoals verlichting, scènes en temperatuur. | Open (P1) |
@@ -133,19 +133,19 @@ Tijdens implementatie vaststellen of het bestaande dashboard betrouwbaar kan wor
 
 | ID | Prioriteit | Requirement | Status |
 |---|---|---|---|
-| IM-01 | P0 | Foto’s uitsluitend uit expliciet geselecteerde Immich-albums tonen. | Deels: servertests gedekt; live albumacceptatie open |
+| IM-01 | P0 | Foto’s uitsluitend uit expliciet geselecteerde Immich-albums tonen. | Deels: Immich handmatig gevalideerd; albumtoegangsrandgevallen open |
 | IM-02 | P0 | Fotolijst altijd handmatig bereikbaar via het tabblad Immich. | Gereed |
 | IM-03 | P0 | Instelbare wisseltijd, willekeurige volgorde en vorige/volgende/pauze. | Gereed |
-| IM-04 | P0 | Foto’s correct roteren en zonder vervorming tonen; volledig weergeven is standaard, uitsnijden optioneel. | Deels: layout getest; echte foto-/EXIF-oriëntatie niet getest |
+| IM-04 | P0 | Foto’s correct roteren en zonder vervorming tonen; volledig weergeven is standaard, uitsnijden optioneel. | Deels: Immich handmatig gevalideerd; EXIF-oriëntatie niet afzonderlijk getest |
 | IM-05 | P0 | Vooruit laden en een begrensde lokale cache gebruiken. | Gereed |
 | IM-06 | P0 | Niet-beschikbare foto’s overslaan; een duidelijke lege toestand tonen wanneer geen foto’s beschikbaar zijn. | Gereed |
-| IM-07 | P0 | Albumwijzigingen verwerken en niet langer toegestane foto’s uit de cache verwijderen. | Deels: servertests gedekt; live albumacceptatie open |
+| IM-07 | P0 | Albumwijzigingen verwerken en niet langer toegestane foto’s uit de cache verwijderen. | Deels: Immich handmatig gevalideerd; intrekking en cache-opruiming niet afzonderlijk bevestigd |
 | IM-08 | P0 | Geen bronfoto’s of albums wijzigen of verwijderen. | Gereed |
 | IM-09 | P0 | Na configureerbare inactiviteit automatisch naar Immich kunnen wisselen; uitschakelbaar per scherm. | Gereed |
 | IM-10 | P0 | De drie hoofdtabs blijven zichtbaar tijdens de diavoorstelling. | Gereed |
 | IM-11 | P0 | Tijdens invoer of actieve routinebediening niet automatisch wisselen. | Gereed |
 | IM-12 | P0 | Aanraken van een foto activeert geen bediening van een ander tabblad. | Gereed |
-| IM-13 | P1 | Optionele klok en eerstvolgende afspraak als overlay. | Open (P1) |
+| IM-13 | P1 | Analoge klok met cijfers 1–12 en eerstvolgende agenda-afspraak tonen in het vaste topmenu naast de datum. | Gereed |
 
 ## 11. Docker en platformonafhankelijkheid
 
@@ -206,13 +206,13 @@ Voorgestelde prestatiedoelen onder gedocumenteerde testomstandigheden:
 |---|---|
 | Responsive webinterface voor gedeelde schermen en persoonlijke apparaten. | Gereed; fysieke apparaattest open |
 | Backend met lokale database voor gezinsgegevens. | Gereed |
-| Afzonderlijke integratiemodules voor CalDAV, Home Assistant en Immich. | Gereed; acceptatie op echte services open |
+| Afzonderlijke integratiemodules voor CalDAV, Home Assistant en Immich. | Gereed; eigenaar heeft de integraties handmatig gevalideerd |
 | Achtergrondprocessen voor synchronisatie en terugkerende taken. | Gereed |
 | Docker Compose voor installatie en beheer. | Deels: configuratie aanwezig; runtimeacceptatie open |
 
 | Bron van gegevens | Status |
 |---|---|
-| CalDAV blijft de bron voor afspraken, Home Assistant voor huisautomatisering en Immich voor foto’s. | Gereed volgens integratieontwerp; echte-serveracceptatie open |
+| CalDAV blijft de bron voor afspraken, Home Assistant voor huisautomatisering en Immich voor foto’s. | Gereed; integraties handmatig gevalideerd door eigenaar |
 
 Herhalingssjablonen en concrete uitvoeringen van taken en routines worden afzonderlijk opgeslagen, zodat wijzigingen geen historie herschrijven. **Status: gereed; snapshots en historie zijn door backendtests gedekt.**
 
@@ -222,13 +222,13 @@ Herhalingssjablonen en concrete uitvoeringen van taken en routines worden afzond
 |---|---|---|
 | 1 | Alle drie de hoofdtabs blijven bereikbaar op mobiel, tablet en groot touchscreen, in beide oriëntaties. | Deels: viewporttests gedaan; fysieke apparaten niet getest |
 | 2 | De interface werkt op een iPhone 13 in staande en liggende oriëntatie zonder horizontale pagina-overflow of essentiële bediening buiten beeld (browser-viewports 390×664 en 750×342 CSS-pixels). | Gereed in browser-viewports; fysieke acceptatie open |
-| 3 | CalDAV-afspraken worden correct ingelezen en bijgewerkt; het dashboard maakt of wijzigt geen afspraken. | Deels: fixtures geslaagd; echte CalDAV-serveracceptatie open |
-| 4 | Herhalingen, uitzonderingen en zomer-/wintertijd worden correct weergegeven. | Deels: fixtures geslaagd; echte CalDAV-serveracceptatie open |
+| 3 | CalDAV-afspraken worden correct ingelezen en bijgewerkt; het dashboard maakt of wijzigt geen afspraken. | Deels: agenda-integratie handmatig bevestigd; alle wijzigings-/duplicaatgevallen niet afzonderlijk bevestigd |
+| 4 | Herhalingen, uitzonderingen en zomer-/wintertijd worden correct weergegeven. | Deels: fixtures geslaagd; volledige live acceptatie van randgevallen niet bevestigd |
 | 5 | Een routine behoudt voortgang na herladen; de volgende uitvoering begint opnieuw. | Gereed |
 | 6 | Twee apparaten voltooien dezelfde taak tegelijk; er ontstaat één voltooiing. | Gereed via geïsoleerde browsercontexts/API-test |
 | 7 | Een boodschappenitem wordt op een telefoon toegevoegd en verschijnt op het gedeelde scherm. | Deels: twee browsercontexts getest; fysieke apparaten niet getest |
 | 8 | Afvinken en herstellen van boodschappen werkt op beide apparaten zonder duplicaten. | Deels: browser/API-tests geslaagd; fysieke apparaten niet getest |
-| 9 | Uitval van CalDAV, Home Assistant of Immich blokkeert de overige onderdelen niet. | Deels: foutfixtures getest; echte services en netwerkuitval niet volledig geaccepteerd |
+| 9 | Uitval van CalDAV, Home Assistant of Immich blokkeert de overige onderdelen niet. | Deels: foutfixtures getest; echte integraties werken handmatig, maar live uitval niet getest |
 | 10 | Automatisch wisselen naar Immich respecteert actieve invoer en behoudt de tabnavigatie. | Gereed in browsertests; langdurige fysieke schermtest open |
 | 11 | De toepassing start met de gedocumenteerde Compose-configuratie op amd64 en arm64. | Open: containerstart en architectuurbouw niet uitgevoerd |
 | 12 | Containervervanging behoudt opgeslagen gegevens. | Open: Docker-runtime niet getest |
@@ -242,20 +242,19 @@ Deze oorspronkelijke bouwvolgorde is grotendeels uitgevoerd. De onderstaande ope
 
 ### P0: resterende implementatie- en acceptatie-TODO’s
 
-1. **Echte CalDAV-acceptatie (AG-02–AG-06):** account en agenda ontdekken, wijzigingen/uitzonderingen, synchronisatie, storingen en behouden kopieën met een echte server nalopen.
-2. **Echte Home Assistant-acceptatie (HA-01, HA-03, HA-05):** login, cookies, iframe/frameheaders, bediening en gedeelde-schermrechten op de doelinstallatie controleren.
-3. **Echte Immich-acceptatie (IM-01, IM-04, IM-07):** albumselectie/intrekking, cacheverwijdering, kapotte foto en EXIF-oriëntatie met echte foto’s controleren.
-4. **Docker/platformacceptatie (DEP-01, DEP-03–DEP-05, GH-04):** Compose starten, amd64/arm64-builds draaien, container vervangen en persistentie controleren.
-5. **Back-up/herstel in Docker (SYS-06):** herstel naar een leeg Docker-volume uitvoeren.
-6. **Doelapparaten en prestaties (UI-06, UI-08, BO-06):** telefoon/gedeeld touchscreen en ondersteunde browsers testen; feedback-, synchronisatie-, 72-uurs- en hostvereisten meten.
-7. **Distributiecontrole (GH-01, GH-04):** repository, voorbeeldconfiguratie, geheimen/logs en containerdistributie voor publicatie nalopen; CI daadwerkelijk uitvoeren.
+Er zijn volgens de huidige inventaris geen P0-requirements waarvan de kernfunctionaliteit nog gebouwd moet worden. Resterend P0-werk is verificatie of acceptatie:
+
+1. **Integratie-randgevallen:** CalDAV-herhalingen/uitzonderingen/tijdzones, dubbele of verwijderde afspraken en storingsbehoud; HA-rechten op een gedeeld scherm; Immich-albumintrekking, cache-opruiming en EXIF-oriëntatie.
+2. **Docker/platformacceptatie (DEP-01, DEP-03–DEP-05, GH-04):** Compose starten, amd64/arm64-builds draaien, container vervangen en persistentie controleren.
+3. **Back-up/herstel in Docker (SYS-06):** herstel naar een leeg Docker-volume uitvoeren.
+4. **Doelapparaten en prestaties (UI-06, UI-08, BO-06):** telefoon/gedeeld touchscreen en ondersteunde browsers testen; feedback-, synchronisatie-, 72-uurs- en hostvereisten meten.
+5. **Distributiecontrole (GH-01, GH-04):** repository, voorbeeldconfiguratie, geheimen/logs en containerdistributie voor publicatie nalopen; CI daadwerkelijk uitvoeren.
 
 ### P1: bewust uitgestelde uitbreidingen
 
 - **AG-09:** maandoverzicht en herinneringen.
 - **BO-09/BO-10:** boodschappen categoriseren/sorteren en meerdere lijsten.
 - **HA-06/HA-07:** directe bediening van geselecteerde apparaten en aanwezigheid/dag-nachtinformatie.
-- **IM-13:** klok en eerstvolgende afspraak als overlay.
 - **GH-08:** bijdragerichtlijnen, release-instructies en versiegebonden containerimages.
 
 BEL-01 t/m BEL-05 waren oorspronkelijk P1 maar zijn inmiddels geïmplementeerd. GEZ-06 en SYS-09/SYS-10 zijn op verzoek uit scope verwijderd.

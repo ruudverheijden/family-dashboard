@@ -2,14 +2,16 @@
 
 Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en herinneringen. Zelf te hosten, zonder abonnement, NAS-afhankelijkheid of externe frontenddiensten.
 
-**Versie 0.1.0 — eerste werkende ontwikkelversie.** De lokale gezinsplanner is bruikbaar. Integratieadapters zijn geïmplementeerd en deels met fixtures getest; een volledige P0-acceptatie op echte CalDAV-, Home Assistant- en Immich-installaties staat nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en de [oorspronkelijke requirements](docs/REQUIREMENTS.md).
+**Versie 0.1.0 — eerste werkende ontwikkelversie.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
 
 ![Samen gezinsdashboard](docs/screenshot.png)
 
 ## Wat werkt
 
 - Vaste hoofdnavigatie: Kalender, Home Assistant, Immich en Boodschappen. Eén gedeelde datumselectie boven het gezinsfilter voor agenda, taken, routines en beloningen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
+- De vaste datumweergave toont een analoge klok met cijfers 1–12 en de eerstvolgende agenda-afspraak.
 - Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
+- Beheerbare headerbranding: pas titel en subtitel aan en upload een gezinsfoto als logo.
 - Dag- en weekagenda toont lokale taakuitvoeringen op hun geplande dagen, met voltooiing direct vanuit de agenda. CalDAV is optioneel voor privéafspraken; de gezinsplanner werkt ook zonder gekoppelde agenda.
 - CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen privéafspraken met herhalingen, uitzonderingen en tijdzones.
 - Taken met beschrijving, datum, icoon, punten per uitvoering, dag/weekherhaling en individuele of gezamenlijke uitvoering.
@@ -47,6 +49,7 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
 | `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
 | Tijdzone | Beheer | Functionele agenda-/uitvoeringstijdzone, standaard Europe/Amsterdam |
+| Logo en teksten | Beheer → Algemeen | Titel, subtitel en gezinsfoto voor de header; foto’s worden verkleind in SQLite opgeslagen |
 | `COOKIE_SECURE` | `.env` | `true` bij uitsluitend HTTPS; standaard `false` voor lokaal HTTP |
 | `CACHE_MB` | `.env` | Bovengrens vervangbare fotocache; standaard 128 MB |
 | CalDAV, HA en Immich | Beheer | Gezamenlijke instellingen, persistent in SQLite |

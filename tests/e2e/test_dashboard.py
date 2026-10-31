@@ -1,6 +1,6 @@
 """Requirement IDs identify acceptance coverage; integration responses are explicit fixtures."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -11,12 +11,40 @@ from conftest import login, add_member, save, section, grocery
 def test_three_day_agenda_shows_today_and_next_two_days(dashboard):
     p = dashboard
     today = date.fromisoformat(p.request.get(p.url + 'api/state').json()['day'])
+    def calendar_with_events(route):
+        response = route.fetch()
+        body = response.json()
+        start = today - timedelta(days=today.weekday())
+        body['events'] = [
+            {'title': f'Afspraak dag {offset + 1}', 'start': f'{start + timedelta(days=offset)}T09:00:00+01:00',
+             'end': f'{start + timedelta(days=offset)}T10:00:00+01:00', 'member': '',
+             'calendar': 'Gezin', 'all_day': False}
+            for offset in range(14)
+        ]
+        route.fulfill(response=response, json=body)
+    p.route('**/api/state*', calendar_with_events)
     p.get_by_role('button', name='3 dagen', exact=True).click()
     expect(p.get_by_role('button', name='3 dagen', exact=True)).to_have_attribute('aria-pressed', 'true')
     assert [date.fromisoformat(day) for day in p.locator('.calendar-day-headings .day-heading').evaluate_all(
         '(columns) => columns.map(column => column.dataset.day)'
     )] == [today + timedelta(days=offset) for offset in range(3)]
     expect(p.locator('.calendar')).to_have_attribute('aria-label', '3-daagse agenda')
+    expect(p.locator('.day-timeline')).to_have_count(3)
+    expect(p.locator('.timed-event')).to_have_count(3)
+    schedule_bounds = p.locator('.calendar-day-schedules').bounding_box()
+    column_bounds = p.locator('.calendar-day-schedules').evaluate(
+        '(schedule) => [".calendar-day-headings .day-heading", ".day-task-cell", ".day-timeline"].map(selector => [...document.querySelectorAll(selector)].map(column => {const {x, width} = column.getBoundingClientRect(); return {x, width}}))'
+    )
+    header_bounds, task_bounds, timeline_bounds = column_bounds
+    for day_index in range(3):
+        for bounds in (header_bounds, task_bounds):
+            assert abs(bounds[day_index]['x']-timeline_bounds[day_index]['x']) < 1
+            assert abs(bounds[day_index]['width']-timeline_bounds[day_index]['width']) < 1
+    assert timeline_bounds[0]['x'] == pytest.approx(schedule_bounds['x'])
+    assert abs(timeline_bounds[-1]['x'] + timeline_bounds[-1]['width'] -
+               schedule_bounds['x'] - schedule_bounds['width']) < 1
+    next_three_day_title = f'Afspraak dag {today.weekday() + 4}'
+    expect(p.locator('.timed-event').filter(has_text=next_three_day_title)).to_have_count(0)
 
     previous_range = p.locator('.date-nav h2').inner_text()
     p.get_by_role('button', name='Volgende 3 dagen').click()
@@ -24,12 +52,29 @@ def test_three_day_agenda_shows_today_and_next_two_days(dashboard):
     assert [date.fromisoformat(day) for day in p.locator('.calendar-day-headings .day-heading').evaluate_all(
         '(columns) => columns.map(column => column.dataset.day)'
     )] == [today + timedelta(days=offset) for offset in range(3, 6)]
+    expect(p.locator('.timed-event')).to_have_count(3)
+    expect(p.locator('.timed-event').filter(has_text=next_three_day_title)).to_have_count(1)
+
+    p.get_by_role('button', name='Week', exact=True).click()
+    expect(p.locator('.day-timeline')).to_have_count(7)
+    expect(p.locator('.timed-event')).to_have_count(7)
 
 
 @pytest.mark.parametrize('size', [(390,664), (750,342), (768,1024), (1024,768), (1440,1000)])
 def test_navigation_responsive_UI01_09(dashboard, size):
     p = dashboard
     p.set_viewport_size(dict(zip(('width', 'height'), size)))
+    if size[0] >= 761:
+        tabs = p.locator('.main-tabs').bounding_box()
+        assert tabs['x'] + tabs['width'] / 2 == pytest.approx(size[0] / 2, abs=1)
+    admin_button = p.locator('#admin').bounding_box()
+    admin_icon = p.locator('#admin svg').bounding_box()
+    assert admin_icon['x'] + admin_icon['width'] / 2 == pytest.approx(
+        admin_button['x'] + admin_button['width'] / 2, abs=1
+    )
+    assert admin_icon['y'] + admin_icon['height'] / 2 == pytest.approx(
+        admin_button['y'] + admin_button['height'] / 2, abs=1
+    )
     p.get_by_role('button', name='Week', exact=True).click()
     expect(p.get_by_role('button', name='Week', exact=True)).to_have_attribute('aria-pressed', 'true')
     previous = p.locator('.date-nav h2').inner_text()
@@ -39,6 +84,9 @@ def test_navigation_responsive_UI01_09(dashboard, size):
     if size[0] <= 760:
         expect(p.locator('.day-task-cell').first).to_have_css('display', 'flex')
         assert p.locator('.calendar').evaluate('(calendar) => calendar.scrollWidth > calendar.clientWidth')
+        assert p.locator('.calendar-time-scroll').evaluate(
+            '(timeline) => timeline.scrollWidth === timeline.clientWidth'
+        )
     for tab in ['Home Assistant', 'Immich', 'Boodschappen', 'Kalender']:
         p.get_by_role('navigation', name='Hoofdnavigatie').get_by_role('button', name=tab, exact=True).click()
         for button in p.locator('.main-tabs button').all():
@@ -99,6 +147,57 @@ def test_calendar_date_stays_in_topbar_without_page_header(dashboard, size):
     expect(p.locator('.topbar')).to_be_in_viewport()
     expect(p.locator('#calendar-date')).to_be_in_viewport()
     assert p.locator('.topbar').bounding_box()['y'] == pytest.approx(0, abs=1)
+
+
+@pytest.mark.parametrize('size', [(320,740), (390,844), (750,342), (768,1024), (1440,1000)])
+def test_analog_clock_and_next_agenda_item_IM13(dashboard, size):
+    p = dashboard
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    events = [
+        {'title':'Verlopen afspraak','start':(now-timedelta(hours=1)).isoformat(),'end':(now-timedelta(minutes=30)).isoformat(),'member':'','calendar':'Gezin','all_day':False},
+        {'title':'Eerstvolgende afspraak','start':(now+timedelta(seconds=45)).isoformat(),'end':(now+timedelta(hours=1)).isoformat(),'member':'','calendar':'Gezin','all_day':False},
+        {'title':'Afspraak later','start':(now+timedelta(hours=2)).isoformat(),'end':(now+timedelta(hours=3)).isoformat(),'member':'','calendar':'Gezin','all_day':False},
+    ]
+
+    def calendar_with_events(route):
+        response = route.fetch()
+        body = response.json()
+        body['events'] = events
+        route.fulfill(response=response, json=body)
+
+    p.clock.install(time=now)
+    p.route('**/api/state*', calendar_with_events)
+    p.set_viewport_size(dict(zip(('width','height'),size)))
+    p.reload()
+    clock = p.get_by_role('img', name='Analoge klok')
+    expect(clock).to_be_visible()
+    assert p.locator('#calendar-date').locator('#analog-clock').count() == 0
+    p.wait_for_function("""() => Math.abs(
+        document.querySelector('#analog-clock').getBoundingClientRect().height -
+        document.querySelector('#calendar-date').getBoundingClientRect().height
+    ) < 1""")
+    clock_box = clock.bounding_box()
+    date_box = p.locator('#calendar-date').bounding_box()
+    assert clock_box['x'] + clock_box['width'] == pytest.approx(date_box['x'], abs=1)
+    assert clock_box['height'] == pytest.approx(date_box['height'], abs=1)
+    expect(p.locator('#clock-numerals text')).to_have_count(12)
+    assert set(p.locator('#clock-numerals text').all_text_contents()) == set(
+        ['12', *map(str, range(1, 12))]
+    )
+    expect(p.locator('#next-agenda-item')).to_contain_text('Eerstvolgende afspraak')
+    expect(p.locator('#next-agenda-item')).not_to_contain_text('Verlopen afspraak')
+    assert p.evaluate('document.documentElement.scrollWidth <= innerWidth')
+
+    initial_hand_position = p.locator('#clock-second-hand').get_attribute('transform')
+    p.clock.fast_forward(90_000)
+    assert p.locator('#clock-second-hand').get_attribute('transform') != initial_hand_position
+    expect(p.locator('#next-agenda-item')).to_contain_text('Afspraak later')
+    expect(p.locator('#next-agenda-item')).not_to_contain_text('Eerstvolgende afspraak')
+
+
+def test_next_agenda_item_empty_state(dashboard):
+    p = dashboard
+    expect(p.locator('#next-agenda-item')).to_have_text('Geen volgende afspraak gepland')
 
 
 @pytest.mark.parametrize('device', ['iPhone 13', 'iPhone 13 landscape'])
@@ -196,6 +295,30 @@ def test_admin_tabs_preserve_unsaved_settings(dashboard):
     assert p.evaluate("JSON.parse(localStorage.getItem('samen-screen')).idle") == 4
 
 
+def test_branding_can_be_customized_from_admin(dashboard):
+    p = dashboard
+    login(p)
+    p.get_by_label('Titel', exact=True).fill('Familie Jansen')
+    p.get_by_label('Subtitel', exact=True).fill('Samen thuis')
+    p.evaluate("""async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 2;
+        canvas.getContext('2d').fillRect(0, 0, 2, 2);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const input = document.querySelector('#brand-image-file');
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], 'family.png', {type: 'image/png'}));
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', {bubbles: true}));
+    }""")
+    expect(p.locator('#brand-image-preview img')).to_be_visible()
+    p.get_by_role('button', name='Instellingen opslaan', exact=True).click()
+    expect(p.locator('#brand-title')).to_have_text('Familie Jansen')
+    expect(p.locator('#brand-caption')).to_have_text('Samen thuis')
+    expect(p.locator('.brandmark img')).to_be_visible()
+    assert p.locator('.brandmark img').get_attribute('src').startswith('/brand-image/')
+
+
 def test_immich_album_selection_uses_popup_and_shows_only_chosen(dashboard):
     p = dashboard
     login(p)
@@ -229,7 +352,11 @@ def test_immich_album_selection_uses_popup_and_shows_only_chosen(dashboard):
 def test_grocery_crud_BO01_06(dashboard):
     p = dashboard
     section(p, 'Boodschappen')
-    p.get_by_role('button', name='Met details').click()
+    details = p.get_by_role('button', name='Met details')
+    add = p.get_by_role('button', name='Toevoegen', exact=True)
+    assert details.locator('xpath=..').get_by_role('button', name='Toevoegen', exact=True).count() == 1
+    assert details.bounding_box()['x'] < add.bounding_box()['x']
+    details.click()
     p.get_by_label('Wat hebben we nodig?').fill('Appels')
     p.get_by_label('Hoeveelheid').fill('2 kg')
     p.get_by_label('Notitie').fill('Groene')
@@ -282,11 +409,16 @@ def test_draft_navigation_and_escape_UI10(dashboard):
     expect(p.get_by_role('textbox', name='Boodschap', exact=True)).to_have_value('Niet kwijt')
     p.get_by_role('button', name='Met details').click()
     p.get_by_label('Notitie').fill('Concept')
-    p.once('dialog', lambda d: d.dismiss())
     p.keyboard.press('Escape')
     expect(p.get_by_label('Notitie')).to_have_value('Concept')
-    p.once('dialog', lambda d: d.accept())
+    confirmation = p.get_by_role('dialog', name='Niet-opgeslagen wijzigingen')
+    expect(confirmation).to_be_visible()
     p.keyboard.press('Escape')
+    expect(confirmation).not_to_be_visible()
+    expect(p.locator('#dialog')).to_be_visible()
+    p.keyboard.press('Escape')
+    expect(confirmation).to_be_visible()
+    confirmation.get_by_role('button', name='Wijzigingen verlaten').click()
     expect(p.locator('#dialog')).not_to_be_visible()
 
 
@@ -332,6 +464,7 @@ def test_task_assignment_repeat_undo_history_TK01_04(dashboard, mode, count):
     save(p)
     expect(p.locator('.task-row')).to_have_count(count)
     p.get_by_role('button', name='Voltooi Tafel dekken').first.click()
+    expect(p.locator('.confetti-piece')).to_have_count(28, timeout=1000)
     expect(p.get_by_role('button', name='Heropen Tafel dekken')).to_have_count(1)
     p.reload()
     section(p, 'Taken')
@@ -470,6 +603,15 @@ def test_calendar_positions_events_on_duration_based_timeline(dashboard):
         p.request.get(p.url + 'api/state').json()['config']['timezone']
     )
     assert dimensions['scrollTop'] == max(0, min(1080, now_minute - 120)), dimensions
+    current_time = p.locator('.current-time-indicator')
+    expect(current_time).to_have_count(1)
+    marker_minute = current_time.evaluate('(marker) => parseFloat(marker.style.getPropertyValue("--current-time-top"))')
+    assert abs(marker_minute - now_minute) <= 1
+    expect(current_time).to_have_attribute('role', 'img')
+    marker_bounds = current_time.bounding_box()
+    schedule_bounds = p.locator('.calendar-day-schedules').bounding_box()
+    assert marker_bounds['x'] == pytest.approx(schedule_bounds['x'])
+    assert marker_bounds['width'] == pytest.approx(schedule_bounds['width'])
     expect(p.locator('.calendar-hour-label').first).to_have_text('00:00')
     expect(p.locator('.calendar-hour-label').last).to_have_text('24:00')
     long_event = p.locator('.timed-event').filter(has_text='Lange afspraak')
@@ -492,11 +634,21 @@ def test_task_icon_is_selected_from_relevant_choices(dashboard):
     section(p, 'Taken')
     p.get_by_role('button', name='Nieuwe taak', exact=True).click()
     icon_choices = p.locator('[data-task-icon]')
-    assert icon_choices.count() >= 50
+    assert icon_choices.count() >= 180
+    icon_values = icon_choices.evaluate_all('icons => icons.map(button => button.dataset.taskIcon)')
+    assert len(icon_values) == len(set(icon_values))
+    assert p.locator('.task-icon-category').count() >= 8
     expect(icon_choices.filter(has_text='🧹')).to_have_count(1)
     expect(p.locator('.task-icon-picker')).to_be_hidden()
     p.locator('.task-icon-trigger').click()
     expect(p.locator('.task-icon-picker')).to_be_visible()
+    p.get_by_role('searchbox', name='Zoek pictogrammen').fill('ontstoppen')
+    expect(p.locator('[data-task-icon][aria-label="Ontstoppen"]')).to_be_visible()
+    expect(p.locator('[data-task-icon][aria-label="Tandenpoetsen"]')).to_be_hidden()
+    p.get_by_role('searchbox', name='Zoek pictogrammen').fill('bagage')
+    expect(p.locator('[data-task-icon][aria-label="Koffer"]')).to_be_visible()
+    expect(p.locator('.task-icon-category:visible h4')).to_have_text('Klusjes en reizen')
+    p.get_by_role('searchbox', name='Zoek pictogrammen').fill('')
     p.get_by_role('button', name='Vegen', exact=True).click()
     expect(p.locator('.task-icon-picker')).to_be_hidden()
     expect(p.locator('.task-icon-trigger')).to_contain_text('🧹')
@@ -532,13 +684,22 @@ def test_routine_progress_new_day_RT01_04(dashboard):
     p.locator('#routine-icon-picker [aria-label="Blij"]').click()
     p.get_by_label('Titel stap 1').fill('Poetsen')
     p.locator('.routine-step-row').nth(0).locator('.task-icon-trigger').click()
+    search = p.locator('.routine-step-row .task-icon-search').first
+    search.fill('nietbestaand')
+    expect(p.locator('.routine-step-row .task-icon-no-results')).to_be_visible()
+    search.fill('tanden')
+    expect(p.locator('.routine-step-row [aria-label="Tandenpoetsen"]')).to_be_visible()
+    expect(p.locator('.routine-step-row [aria-label="Tas"]')).to_be_hidden()
+    search.fill('🪥')
+    expect(p.locator('.routine-step-row [aria-label="Tandenpoetsen"]')).to_be_visible()
+    search.fill('')
     picker_metrics = p.locator('.routine-step-row .task-icon-picker').first.evaluate("""picker => {
         const content = document.querySelector('#dialog-content');
         const style = getComputedStyle(content);
         const bounds = content.getBoundingClientRect();
         const pickerBounds = picker.getBoundingClientRect();
         return {
-            columns: getComputedStyle(picker).gridTemplateColumns.split(' ').length,
+            columns: getComputedStyle(picker.querySelector('.task-icon-category-grid')).gridTemplateColumns.split(' ').length,
             pickerWidth: pickerBounds.width,
             triggerWidth: picker.parentElement.querySelector('.task-icon-trigger').getBoundingClientRect().width,
             pickerLeft: pickerBounds.left,
@@ -558,7 +719,7 @@ def test_routine_progress_new_day_RT01_04(dashboard):
     p.locator('.routine-step-row').nth(1).locator('[aria-label="Tas"]').click()
     save(p)
     expect(p.locator('.routine-header h2')).to_contain_text('😊')
-    expect(p.locator('.step')).to_have_text(['🪥 Poetsen', '🎒 Tas inpakken'])
+    expect(p.locator('.routine-step-label')).to_have_text(['🪥 Poetsen', '🎒 Tas inpakken'])
     p.get_by_role('button', name='Voltooi Poetsen').click()
     expect(p.get_by_text('1 van 2 stappen klaar')).to_be_visible()
     p.reload()
@@ -594,6 +755,83 @@ def test_routine_is_visible_when_not_scheduled_today(dashboard):
     expect(p.locator('.routine-preview')).to_contain_text('Avondroutine')
     expect(p.locator('.routine-preview')).to_contain_text('Lezen')
     expect(p.get_by_role('button', name='Voltooi Lezen')).to_have_count(0)
+
+
+def test_routine_overview_shows_one_card_for_multiple_members(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    p.get_by_role('button', name='Beheerinstellingen', exact=True).click()
+    add_member(p, 'Sam')
+    section(p, 'Routines')
+    p.get_by_role('button', name='Nieuwe routine', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Ochtendroutine')
+    p.get_by_label('Alex', exact=True).check()
+    p.get_by_label('Sam', exact=True).check()
+    p.get_by_label('Titel stap 1').fill('Aankleden')
+    save(p)
+
+    expect(p.locator('.routine-grid > .panel')).to_have_count(1)
+    expect(p.locator('.routine-step-label')).to_have_text(['✓ Aankleden'])
+    expect(p.get_by_role('button', name='Voltooi Aankleden voor Alex')).to_be_visible()
+    expect(p.get_by_role('button', name='Voltooi Aankleden voor Sam')).to_be_visible()
+    p.get_by_role('button', name='Voltooi Aankleden voor Alex').click()
+    expect(p.locator('.routine-celebration h2')).to_contain_text('Alex')
+    p.get_by_role('button', name='Viering sluiten').click()
+    expect(p.get_by_role('button', name='Heropen Aankleden voor Alex')).to_be_visible()
+    expect(p.get_by_role('button', name='Voltooi Aankleden voor Sam')).to_be_visible()
+    p.get_by_role('button', name='Voltooi Aankleden voor Sam').click()
+    expect(p.locator('.routine-celebration h2')).to_contain_text('Sam')
+    p.get_by_role('button', name='Viering sluiten').click()
+
+def test_routine_completion_celebrates_only_the_last_step_with_rotating_variants(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    section(p, 'Routines')
+    p.get_by_role('button', name='Nieuwe routine', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Ochtendroutine')
+    p.get_by_label('Alex', exact=True).check()
+    p.get_by_label('Titel stap 1').fill('Aankleden')
+    p.get_by_role('button', name='Stap toevoegen').click()
+    p.get_by_label('Titel stap 2').fill('Tas inpakken')
+    save(p)
+
+    p.get_by_role('button', name='Voltooi Aankleden').click()
+    expect(p.locator('.routine-celebration')).to_have_count(0)
+    expect(p.locator('.confetti-burst')).to_have_count(0)
+
+    variants = []
+    messages = []
+    message_variants = {
+        'Supergoed gedaan',
+        'Wat heb jij dat goed gedaan',
+        'Geweldig gedaan',
+        'Fantastisch',
+        'Wat een topper ben jij',
+        'Jij hebt dit geweldig gedaan',
+        'Knap gedaan',
+        'Wauw, wat goed',
+        'Echt super gedaan',
+        'Wat mag je trots zijn',
+    }
+    for completion in range(10):
+        if completion:
+            p.get_by_role('button', name='Viering sluiten').click()
+            p.get_by_role('button', name='Heropen Tas inpakken').click()
+        p.get_by_role('button', name='Voltooi Tas inpakken').click()
+        celebration = p.locator('.routine-celebration')
+        expect(celebration).to_be_visible()
+        expect(celebration.locator('.routine-celebration-icon')).to_have_count(42)
+        expect(p.locator('.confetti-burst')).to_have_count(0)
+        variants.append(celebration.get_attribute('data-variant'))
+        message = celebration.locator('h2').inner_text()
+        assert message.endswith(', Alex!')
+        assert message[:-7] in message_variants
+        messages.append(message)
+
+    assert len(set(variants)) == 10
+    assert all(first != second for first, second in zip(messages, messages[1:]))
 
 
 def test_ha_custom_dashboard_is_embedded_without_entity_api(dashboard):

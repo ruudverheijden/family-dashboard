@@ -2,6 +2,14 @@
 
 Gecontroleerd op 30 oktober 2026. Dit document onderscheidt implementatie van daadwerkelijke acceptatie. De aangeleverde requirements blijven het doel; 0.1.0 is nog geen volledig afgetekende P0-release.
 
+## Handmatige integratievalidatie — 31 oktober 2026
+
+De eigenaar heeft bevestigd dat de agenda-integratie, Immich en Home Assistant handmatig werken in de eigen omgeving. De integraties zijn daarom niet langer een algemene open acceptatie-TODO. Specifieke randgevallen blijven open waar ze niet afzonderlijk zijn bevestigd: CalDAV-herhalingen/uitzonderingen, tijdzones en storingen; HA-rechten op een gedeeld scherm; Immich-albumintrekking, cache-opruiming en EXIF-oriëntatie. Dit is een vastgelegde gebruikersvalidatie, geen onafhankelijk herhaalde test.
+
+## IM-13 — analoge klok en eerstvolgende afspraak
+
+De vaste datumweergave in het topmenu toont een analoge klok met twaalf cijfers en de eerstvolgende toekomstige afspraak. Als er geen afspraak is, staat er “Geen volgende afspraak gepland”. Gerichte Chromium-tests controleerden klokverversing, doorgaan naar de volgende afspraak en weergave zonder horizontale overflow op 320, 390, 750, 768 en 1440 CSS-pixels. Resultaat: **6/6 gerichte tests geslaagd**.
+
 ## QE-update: Playwright, 30 oktober 2026
 
 - **28 scenario’s × Chromium en WebKit = 56 geslaagde browsertests**, Playwright 1.64.1 op macOS arm64; volledige run 80,50 seconden inclusief de Firefox-opstartpogingen.
@@ -12,7 +20,7 @@ Gecontroleerd op 30 oktober 2026. Dit document onderscheidt implementatie van da
 - Testgegevens en caches zijn tijdelijk en gescheiden van de echte installatie. Externe integratie-antwoorden zijn fixtures; echte integraties zijn hiermee niet afgetekend.
 - Zie [testplan, requirementdekking en uitvoerinstructies](TESTING.md). JUnit-uitvoer staat lokaal in `test-results/results.xml`; screenshots/traces worden bij fouten bewaard. De nieuwe GitHub Actions-browsermatrix is geconfigureerd, niet op GitHub uitgevoerd.
 
-De onderstaande oorspronkelijke controles zijn historische oplevernotities; bovenstaande resultaten vervangen de oudere testaantallen en de beperkte browsercontrole. Fysieke apparaten, echte integraties, Docker-runtime en de duurtest blijven open.
+De onderstaande oorspronkelijke controles zijn historische oplevernotities; bovenstaande resultaten vervangen de oudere testaantallen en de beperkte browsercontrole. Fysieke apparaten, Docker-runtime en de duurtest blijven open.
 
 ## Uitgevoerde controles
 
@@ -37,7 +45,7 @@ De TestClient geeft één upstream deprecation-waarschuwing over httpx versus ht
 
 - Docker-daemon was niet beschikbaar. Compose is syntactisch gecontroleerd, maar containerbuild/start, persistentie bij containervervanging en herstel naar een Docker-volume zijn lokaal niet uitgevoerd.
 - Linux amd64- en arm64-builds staan in GitHub Actions. De workflow is nog niet op GitHub uitgevoerd; geen vooraf gebouwde images gepubliceerd.
-- Echte CalDAV-, Immich- en HA-servers waren niet beschikbaar. Bibliotheek- en mocktests vervangen geen interoperabiliteitstest.
+- Echte CalDAV-, Immich- en HA-servers waren tijdens deze oorspronkelijke verificatieronde niet beschikbaar. De eigenaar heeft deze integraties op 31 oktober 2026 handmatig gevalideerd; zie de update hierboven.
 - Home Assistant-iframe: echte login, cookies, frameheaders, mixed content, mobiele bediening en rechtenbeperking moeten met de eigen installatie worden gecontroleerd. Een directe link naar hetzelfde dashboard is beschikbaar als iframe-weergave niet werkt.
 - Immich-oriëntatie en previewkwaliteit hangen af van de previews die Immich levert. Geen echte foto-/EXIF-test uitgevoerd.
 - Nog geen 72-uurs duurtest of gemeten 200-ms/2-seconden prestatierapport, en geen meting van minimale RAM/CPU-hostvereisten.
@@ -102,6 +110,6 @@ Gecontroleerd: **70 backend-/unittests** en **32 Chromium-end-to-endtests** gesl
 
 ## Update: tijdschaal in de agenda
 
-Taken staan in een aparte rij boven de agenda-afspraken. Het tijdrooster beslaat 24 uur en scrolt verticaal; het opent rond de huidige tijd met twee uur terug en vier uur vooruit. Tijdgebonden afspraken staan op hun werkelijke tijd en zijn proportioneel geplaatst; overlappende afspraken delen de beschikbare kolomruimte. Hele-dagafspraken blijven apart zichtbaar. Op mobiel scrollen de meerdaagse en weekroosters binnen de agenda.
+Taken staan in een aparte rij boven de agenda-afspraken. Het tijdrooster beslaat 24 uur en scrolt verticaal; het opent rond de huidige tijd met twee uur terug en vier uur vooruit. Een rode horizontale indicator markeert de huidige tijd en beweegt mee met de klok. Tijdgebonden afspraken staan op hun werkelijke tijd en zijn proportioneel geplaatst; overlappende afspraken delen de beschikbare kolomruimte. Hele-dagafspraken blijven apart zichtbaar. Op mobiel scrollen de meerdaagse en weekroosters binnen de agenda.
 
 Gecontroleerd: **78 backend-/unittests** en **50 Chromium-end-to-endtests** geslaagd, inclusief positie/duur, overlap, tijden buiten de oorspronkelijke schaal en mobiele weergave.

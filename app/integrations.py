@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -15,6 +16,9 @@ import recurring_ical_events
 from .db import connect, settings
 
 LOCK = threading.RLock()
+CALENDAR_SYNC_INTERVAL = 180
+_calendar_sync_guard = threading.Lock()
+_last_calendar_sync = None
 CACHE = Path(os.getenv('CACHE_DIR', './cache'))
 CACHE_LIMIT = int(os.getenv('CACHE_MB', '128')) * 1024 * 1024
 assets = {}
@@ -70,6 +74,15 @@ def set_status(db, key, ok, message):
     db.execute('INSERT OR REPLACE INTO status VALUES (?,?)', (key, json.dumps(body)))
 
 def sync_calendars():
+    global _last_calendar_sync
+    with _calendar_sync_guard:
+        now = time.monotonic()
+        if _last_calendar_sync is not None and now - _last_calendar_sync < CALENDAR_SYNC_INTERVAL:
+            return
+        _last_calendar_sync = now
+        _sync_calendars()
+
+def _sync_calendars():
     with LOCK:
         with connect() as db:
             cfg = settings(db)

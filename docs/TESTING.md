@@ -31,15 +31,16 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
 | GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, avatar, filtering, vergrendelen en onbevoegde API-toegang |
 | UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar in een aparte rij boven de agenda op hun geplande dagen in dag-, drie-daagse en weekweergave; filter per gezinslid en direct afvinken |
-| AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |
-| AG-02–08, AG-10 | CalDAV optioneel en uitsluitend-lezen; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
+| AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont, met actuele-tijdindicator; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |
+| AG-02–08, AG-10 | CalDAV optioneel en uitsluitend-lezen; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; eigenaar heeft de agenda-integratie handmatig gevalideerd |
 | TK-01–04 | Taak met beschrijving/punten, individuele en gezamenlijke toewijzing, dagelijkse uitvoering, voltooien/heropenen, herladen, historie en gezinsfilter |
 | RT-01–04 | Geordende stappen, voortgang persistent na herladen, volgende dag leeg en vorige dag ongewijzigd; backendtests voor conflict/snapshots/inhaalperiode |
 | BEL-01–05 | Punten per taakuitvoering en volledig afgeronde routine, tegenboeking bij ongedaan maken, unieke transacties, gedeelde taakbeloning per verantwoordelijke, gereserveerde aanvraag, beheergoedkeuring/-afwijzing en idempotente herhaling |
 | BO-01–08 | Toevoegen, details, bewerken, verwijderen, afvinken/herstellen/opruimen; tweede browser ziet toevoeging binnen 2 seconden; conflict bewaart invoer; verloren antwoord en herhaling veroorzaken geen duplicaat |
 | HA-01, HA-03–05 | Fixture voor geselecteerde lampbediening en alleen-lezen sensor; geïsoleerde fout; backendtests voor token, selectie en toegestane acties |
 | IM-02–06, IM-09–12 | Foto vooruit/achteruit/pauze, standaard contain, niet-beschikbare afbeeldingen, navigatie, fotoaanraking, inactiviteit en guards voor formulier/concept/routine |
-| IM-01, IM-05, IM-07–08 | Backendtests voor toelatingslijst, ingetrokken albumrechten en cachelimiet; geen live Immich-acceptatie |
+| IM-01, IM-05, IM-07–08 | Backendtests voor toelatingslijst, ingetrokken albumrechten en cachelimiet; eigenaar heeft Immich handmatig gevalideerd, maar EXIF-oriëntatie en albumintrekking niet afzonderlijk bevestigd |
+| IM-13 | Analoge klok met twaalf zichtbare cijfers, eerstvolgende toekomstige afspraak, wisseling naar volgende afspraak en lege toestand; responsive overflow |
 | SYS-01–05, SYS-08 | Lokale HTTP-server zonder externe diensten, verbroken verbinding/herstel, mislukte opslag, dubbele taakvoltooiing vanaf twee browsers met één historie-item, XSS-tekstescaping en schermlokale voorkeuren |
 | SYS-06–07 | Bestaande backendtests voor back-up/herstel en weigeren nieuwere schemaversie |
 | GH-04 | Vastgelegde testdependencies, bestaande backend/containerworkflow en nieuwe browsermatrix met foutartefacten |
@@ -47,6 +48,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 ## Grenzen van dit bewijs
 
 - Integratie-fixtures testen de frontend, niet interoperabiliteit met echte CalDAV-, Home Assistant- of Immich-installaties. Geheimen, caching en synchronisatie worden aanvullend server-side getest.
+- De eigenaar heeft op 31 oktober 2026 bevestigd dat agenda-integratie, Home Assistant en Immich in de eigen omgeving werken. Dit is handmatige acceptatie en geen door deze testset reproduceerbare of onafhankelijk herhaalde controle.
 - WebKit is een browserengine-test, geen test op een echte iPhone/Safari-installatie. Viewports vervangen geen fysiek touchscreen.
 - De 2-secondenassertie is een functionele grens op een lokale testmachine, geen netwerk-SLA. Geen 72-uurs duurtest, 200-ms responsbenchmark of minimale RAM/CPU-meting.
 - Dockerstart, amd64/arm64, containervervanging en herstel naar een Docker-volume blijven aparte acceptatiepunten; de CI-configuratie is geen bewijs dat die workflow al op GitHub is uitgevoerd.
@@ -81,6 +83,13 @@ De week-API levert nu geplande taakuitvoeringen voor alle zeven dagen; de agenda
 
 - Backend en unittests: **70/70 geslaagd**.
 - Chromium: **32/32 end-to-endtests geslaagd**, inclusief dagelijks terugkerende taken op alle zeven dagen zonder CalDAV.
+
+## Update: analoge klok en eerstvolgende afspraak (IM-13)
+
+De vaste datumweergave toont nu een analoge klok met de cijfers 1–12 en de eerstvolgende toekomstige agenda-afspraak. De gerichte Chromium-tests controleren ook het bijwerken naar de daaropvolgende afspraak, de lege toestand en viewportbreedtes van 320 tot 1440 pixels.
+
+- Gerichte Chromium-tests: **6/6 geslaagd**.
+- De volledige browser- en backendtestsuites zijn voor deze wijziging niet opnieuw uitgevoerd.
 
 ## Mobiele ondergrens — iPhone 13
 

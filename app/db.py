@@ -67,7 +67,7 @@ def init():
         CREATE INDEX IF NOT EXISTS reward_requests_status ON reward_requests(status, created_at);
         PRAGMA user_version=2;
         ''')
-        db.execute('INSERT OR IGNORE INTO settings VALUES (1,1,?)', (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'ha_dashboard': '/lovelace/0', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15}),))
+        db.execute('INSERT OR IGNORE INTO settings VALUES (1,1,?)', (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'ha_dashboard': '/lovelace/0', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15, 'brand_title': 'samen', 'brand_subtitle': 'een plek voor ons allemaal', 'brand_image': ''}),))
         row = db.execute('SELECT body FROM settings WHERE id=1').fetchone()
         stored = json.loads(row['body'])
         legacy_token = stored.pop('ha_token', None)
@@ -80,7 +80,14 @@ def settings(db):
     stored = json.loads(row['body'])
     stored.pop('ha_token', None)
     stored.pop('ha_entities', None)
-    return {'ha_dashboard': '/lovelace/0', **stored, 'version': row['version']}
+    return {
+        'ha_dashboard': '/lovelace/0',
+        'brand_title': 'samen',
+        'brand_subtitle': 'een plek voor ons allemaal',
+        'brand_image': '',
+        **stored,
+        'version': row['version'],
+    }
 
 def entities(db, kind):
     return [{**json.loads(r['body']), 'id': r['id'], 'version': r['version']} for r in db.execute('SELECT * FROM entities WHERE kind=? ORDER BY rowid', (kind,))]
