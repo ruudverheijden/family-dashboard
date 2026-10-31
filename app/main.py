@@ -5,6 +5,7 @@ import json
 import os
 import re
 import secrets
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -14,13 +15,87 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from . import integrations
 from .db import connect, entities, init, settings
+
+MAX_REQUEST_BODY_BYTES = 1_048_576
+MAX_REQUEST_BODY_CHUNKS = 1024
+LOGIN_BURST = 5
+LOGIN_REFILL_SECONDS = 10
+
+
+class RequestBodyLimitMiddleware:
+    def __init__(self, app, max_body_size):
+        self.app = app
+        self.max_body_size = max_body_size
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            await self.app(scope, receive, send)
+            return
+
+        content_length = next(
+            (value for name, value in scope.get('headers', []) if name.lower() == b'content-length'),
+            None,
+        )
+        if content_length is not None:
+            try:
+                declared_size = int(content_length)
+            except ValueError:
+                declared_size = 0
+            if declared_size > self.max_body_size:
+                await self.reject(scope, receive, send)
+                return
+
+        body = bytearray()
+        total_size = 0
+        chunk_count = 0
+        while True:
+            message = await receive()
+            if message['type'] == 'http.disconnect':
+                return
+            if message['type'] != 'http.request':
+                continue
+            chunk = message.get('body', b'')
+            total_size += len(chunk)
+            chunk_count += 1
+            if total_size > self.max_body_size or chunk_count > MAX_REQUEST_BODY_CHUNKS:
+                await self.reject(scope, receive, send)
+                return
+            body.extend(chunk)
+            if not message.get('more_body', False):
+                break
+
+        message = {'type': 'http.request', 'body': bytes(body), 'more_body': False}
+        message_available = True
+
+        async def replay_receive():
+            nonlocal message_available
+            if message_available:
+                message_available = False
+                return message
+            return await receive()
+
+        await self.app(scope, replay_receive, send)
+
+    async def reject(self, scope, receive, send):
+        response = JSONResponse(
+            {'detail': 'Verzoek is te groot.'},
+            status_code=413,
+            headers={
+                'Cache-Control': 'no-store',
+                'X-Content-Type-Options': 'nosniff',
+                'Referrer-Policy': 'no-referrer',
+                'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src http: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'",
+            },
+        )
+        await response(scope, receive, send)
+
 
 def load_environment(env_file=None):
     load_dotenv(env_file or Path(__file__).resolve().parent.parent / '.env')
@@ -29,6 +104,7 @@ load_environment()
 
 sessions = {}
 attempts = {}
+login_lock = threading.Lock()
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 SALT = secrets.token_bytes(16)
 ADMIN_HASH = hashlib.scrypt(ADMIN_PASSWORD.encode(), salt=SALT, n=16384, r=8, p=1)
@@ -51,6 +127,7 @@ async def lifespan(app):
         pass
 
 app = FastAPI(title='Samen · gezinsdashboard', lifespan=lifespan, docs_url=None, redoc_url=None)
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=MAX_REQUEST_BODY_BYTES)
 
 @app.middleware('http')
 async def security(request, call_next):
@@ -81,15 +158,52 @@ class Login(BaseModel):
 def login(body: Login, request: Request, response: Response):
     if not ADMIN_PASSWORD or ADMIN_PASSWORD == 'vervang-dit-door-een-uniek-wachtwoord':
         raise HTTPException(503, 'Stel op de server een eigen ADMIN_PASSWORD in en herstart de app.')
-    ip = request.client.host
-    attempts[ip] = [t for t in attempts.get(ip, []) if t > time.time() - 300]
-    if len(attempts[ip]) >= 5:
-        raise HTTPException(429, 'Te veel pogingen. Probeer het over vijf minuten opnieuw.')
-    candidate = hashlib.scrypt(body.password.encode(), salt=SALT, n=16384, r=8, p=1)
-    if not hmac.compare_digest(candidate, ADMIN_HASH):
-        attempts[ip].append(time.time())
-        raise HTTPException(401, 'Het wachtwoord klopt niet.')
-    attempts.pop(ip, None)
+    ip = request.client.host if request.client else 'unknown'
+    with login_lock:
+        now = time.time()
+        for address, timestamps in list(attempts.items()):
+            active = [timestamp for timestamp in timestamps if timestamp > now - 300]
+            if active:
+                attempts[address] = active
+            else:
+                del attempts[address]
+        ip_attempts = attempts.get(ip, [])
+        if len(ip_attempts) >= 5:
+            retry_after = max(1, int(ip_attempts[0] + 300 - now))
+            raise HTTPException(
+                429,
+                'Te veel pogingen. Probeer het over vijf minuten opnieuw.',
+                headers={'Retry-After': str(retry_after)},
+            )
+
+        retry_after = None
+        with connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            limiter = db.execute('SELECT tokens,updated_at FROM login_limiter WHERE id=1').fetchone()
+            tokens = min(
+                LOGIN_BURST,
+                limiter['tokens'] + max(0, now - limiter['updated_at']) / LOGIN_REFILL_SECONDS,
+            )
+            if tokens < 1:
+                retry_after = max(1, int((1 - tokens) * LOGIN_REFILL_SECONDS + 0.999))
+            else:
+                tokens -= 1
+            db.execute(
+                'UPDATE login_limiter SET tokens=?,updated_at=? WHERE id=1',
+                (tokens, now),
+            )
+        if retry_after is not None:
+            raise HTTPException(
+                429,
+                'Te veel aanmeldpogingen. Wacht even voordat je het opnieuw probeert.',
+                headers={'Retry-After': str(retry_after)},
+            )
+
+        candidate = hashlib.scrypt(body.password.encode(), salt=SALT, n=16384, r=8, p=1)
+        if not hmac.compare_digest(candidate, ADMIN_HASH):
+            attempts.setdefault(ip, []).append(now)
+            raise HTTPException(401, 'Het wachtwoord klopt niet.')
+        attempts.pop(ip, None)
     now = time.time()
     for expired in [k for k, expiry in sessions.items() if expiry < now]:
         del sessions[expired]
@@ -149,8 +263,11 @@ def catch_up_background():
         catch_up(db)
 
 
-def read_runs(db, day):
-    return [{**dict(r), 'body': json.loads(r['body']), 'done': json.loads(r['done'])} for r in db.execute('SELECT * FROM runs WHERE day=? ORDER BY rowid', (day,))]
+def read_runs(db, start_day, end_day=None):
+    end_day = end_day or start_day
+    return [{**dict(r), 'body': json.loads(r['body']), 'done': json.loads(r['done'])} for r in db.execute(
+        'SELECT * FROM runs WHERE day BETWEEN ? AND ? ORDER BY day,rowid', (start_day, end_day)
+    )]
 
 def point_balances(db):
     balances = {member['id']: {'balance': 0, 'reserved': 0, 'available': 0} for member in entities(db, 'members')}
@@ -202,7 +319,7 @@ def update_completion_points(db, run, done, completion_version):
         )
 
 @app.get('/api/state')
-def state(day: str | None = None):
+def state(day: str | None = None, period: str = 'day'):
     with connect() as db:
         cfg = settings(db)
         if day is None:
@@ -213,18 +330,28 @@ def state(day: str | None = None):
             raise HTTPException(422, 'Ongeldige datum.')
         if abs((date.fromisoformat(day) - datetime.now(ZoneInfo(cfg['timezone'])).date()).days) > 730:
             raise HTTPException(422, 'Kies een datum binnen twee jaar van vandaag.')
+        if period not in ('day', 'week'):
+            raise HTTPException(422, 'Ongeldige agenda-periode.')
+        selected_day = date.fromisoformat(day)
+        start_day = selected_day - timedelta(days=selected_day.weekday()) if period == 'week' else selected_day
+        end_day = start_day + timedelta(days=6) if period == 'week' else start_day
         catch_up(db)
-        materialize(db, day)
+        current_day = start_day
+        while current_day <= end_day:
+            materialize(db, current_day.isoformat())
+            current_day += timedelta(days=1)
         return {
             'day': day,
             'members': entities(db, 'members'),
             'tasks': entities(db, 'tasks'),
             'routines': entities(db, 'routines'),
             'groceries': entities(db, 'groceries'),
-            'runs': read_runs(db, day),
+            'runs': read_runs(db, start_day.isoformat(), end_day.isoformat()),
             'events': [e for r in db.execute('SELECT body FROM calendars') for e in json.loads(r[0])],
             'status': {r['id']: json.loads(r['body']) for r in db.execute('SELECT * FROM status')},
-            'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds')},
+            'config': {k: cfg[k] for k in ('timezone', 'ha_url', 'ha_dashboard', 'slide_seconds')} | {
+                'caldav_configured': bool(cfg['caldav']),
+            },
             'photos': list(integrations.assets.values()),
             'rewards': [reward for reward in entities(db, 'rewards') if not reward.get('archived')],
             'balances': point_balances(db),

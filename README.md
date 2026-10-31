@@ -8,9 +8,10 @@ Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en
 
 ## Wat werkt
 
-- Vaste hoofdnavigatie: Kalender, Home Assistant en Immich; Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
+- Vaste hoofdnavigatie: Kalender, Home Assistant en Immich; de datum staat in de bovenbalk bij de kalender en blijft zichtbaar tijdens scrollen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
 - Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
-- CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen dag/weekagenda met terugkerende afspraken, uitzonderingen en tijdzones.
+- Dag- en weekagenda toont lokale taakuitvoeringen op hun geplande dagen, met voltooiing direct vanuit de agenda. CalDAV is optioneel voor privéafspraken; de gezinsplanner werkt ook zonder gekoppelde agenda.
+- CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen privéafspraken met herhalingen, uitzonderingen en tijdzones.
 - Taken met beschrijving, datum, icoon, punten per uitvoering, dag/weekherhaling en individuele of gezamenlijke uitvoering.
 - Routines met geordende stappen, personen, weekdagen en tijdvenster. Punten worden één keer toegekend als alle stappen af zijn; voortgang blijft server-side bewaard en gemiste stappen blijven open.
 - Gedeelde boodschappen met hoeveelheid, notitie, bewerken, afvinken, herstellen en opruimen.
@@ -36,7 +37,7 @@ Benodigd: Docker Engine met Compose v2 op een Linux amd64- of arm64-host. De Doc
 
 4. Open `http://<serveradres>:8080` in een browser (of de ingestelde poort). Open de beheerknop rechtsboven, meld je aan en voeg gezinsleden toe. De app start leeg: geen fictief gezin en geen voorbeeldafspraken in je echte database.
 
-De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Gebruik deze versie op een vertrouwd thuisnetwerk; stel geen port-forward in. Een internetverbinding is alleen nodig voor installatie/updates of wanneer de gekozen integraties extern draaien. Lokale taken, routines en boodschappen werken zonder internet zolang de server bereikbaar is.
+De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk inkomend verkeer met de hostfirewall tot je vertrouwde thuisnetwerk en stel geen router-port-forward of andere publieke toegang in. Gebruik deze versie alleen op een vertrouwd thuisnetwerk. Een internetverbinding is alleen nodig voor installatie/updates of wanneer de gekozen integraties extern draaien. Lokale taken, routines en boodschappen werken zonder internet zolang de server bereikbaar is.
 
 ## Configuratie
 
@@ -53,7 +54,9 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Gebruik d
 
 De volumes `family-data` en `family-cache` bevatten respectievelijk database/configuratie en vervangbare foto’s. Compose geeft ze een projectprefix. Voor eigen opslagpaden kunnen de volumemounts worden gewijzigd; de container draait als UID/GID 10001 en moet daar kunnen schrijven. Gebruik een lokale schijf voor SQLite, geen databasebestand op SMB/NFS.
 
-### CalDAV
+### Optionele privéagenda via CalDAV
+
+Een CalDAV-koppeling is niet nodig voor de gezinsplanner: taken en routines worden lokaal beheerd en verschijnen vanzelf op hun geplande datum in het agendaoverzicht. Voeg alleen een CalDAV-account toe als je ook privéafspraken uit een externe agenda wilt zien.
 
 Open **Beheer → Account toevoegen**, vul een CalDAV-serveradres, gebruikersnaam en wachtwoord in en kies **Agenda’s ophalen**. Selecteer agenda’s, wijs een gezinslid toe en sla op. Meerdere accounts zijn mogelijk. Bij hetzelfde serveradres behoudt een leeg wachtwoord het bestaande geheim. Vul bij wijziging van het CalDAV-serveradres opnieuw het wachtwoord in; verwijderen van het account verwijdert ook de gekoppelde lokale agenda’s.
 
@@ -63,20 +66,29 @@ Afspraken worden niet lokaal aangemaakt of gewijzigd; CalDAV blijft de bron. Raa
 
 ### Home Assistant
 
-Het HA-tabblad toont je Home Assistant-dashboard rechtstreeks in Samen. De app haalt geen HA-entiteiten op en rendert ze niet zelf; je maakt en beheert de inhoud en bediening volledig in Home Assistant.
+Het HA-tabblad toont je Home Assistant-dashboard rechtstreeks in Samen. De bovenbalk met navigatie blijft staan; het dashboard gebruikt de rest van het scherm. De app haalt geen HA-entiteiten op en rendert ze niet zelf; je maakt en beheert de inhoud en bediening volledig in Home Assistant.
 
 1. Open **Beheer → Home Assistant-dashboard**.
 2. Vul het HA-serveradres in, bijvoorbeeld `http://homeassistant.local:8123` (zonder `/api` of dashboardpad).
 3. Stel het dashboardpad in. Standaard is dit `/lovelace/0`; voor een eigen dashboard gebruik je het pad uit Home Assistant, bijvoorbeeld `/dashboard-gezinsdashboard/overzicht`.
 4. Sla de instellingen op en open de tab **Home Assistant**.
 
-Je browser moet het ingestelde HA-adres kunnen bereiken en zo nodig al bij Home Assistant zijn aangemeld. Het HA-dashboard wordt binnen een iframe getoond; de browser- en HA-configuratie moeten insluiten toestaan. De link onder het dashboard opent dezelfde pagina ook rechtstreeks in een nieuw tabblad. Gebruik op niet-vertrouwde netwerken HTTPS voor zowel Samen als Home Assistant.
+Je browser moet het ingestelde HA-adres kunnen bereiken en zo nodig al bij Home Assistant zijn aangemeld. Het HA-dashboard wordt schermvullend onder de bovenbalk getoond; de browser- en HA-configuratie moeten insluiten toestaan. Gebruik op niet-vertrouwde netwerken HTTPS voor zowel Samen als Home Assistant.
+
+Krijg je in Firefox de melding dat Home Assistant niet in een andere website mag worden ingesloten? Dan weigert de HA-server dit via `X-Frame-Options`; Samen kan die beveiligingsheader niet omzeilen. In Home Assistant 2026.8 en nieuwer kun je dit aanpassen via **Instellingen → Systeem → Netwerk → HTTP-server**: schakel **Send X-Frame-Options** uit en bevestig de herstart. In oudere versies voeg je aan `configuration.yaml` toe:
+
+```yaml
+http:
+  use_x_frame_options: false
+```
+
+Herstart Home Assistant daarna. Gebruik dit alleen op een vertrouwd netwerk: uitschakelen vermindert bescherming tegen clickjacking. Als Home Assistant achter een reverse proxy staat, controleer dan ook of die niet zelf `X-Frame-Options` of een beperkende CSP `frame-ancestors`-header toevoegt.
 
 ### Immich
 
 Vul het basisadres **zonder `/api`** en een beperkte lees-API-sleutel in. Voer bij wijziging van het Immich-serveradres de API-sleutel opnieuw in. Kies **Albums ophalen**, selecteer expliciet de gewenste albums en sla op. Zonder selectie worden geen foto’s getoond. API-routes zijn gebaseerd op [albuminformatie](https://api.immich.app/endpoints/albums/getAlbumInfo) en [asset previews](https://api.immich.app/endpoints/assets/viewAsset); compatibiliteit met je geïnstalleerde Immich-versie moet worden gecontroleerd.
 
-De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke twee minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd.
+De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke twee minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd. De Immich-fotolijst gebruikt, net als het HA-tabblad, de volledige ruimte onder de bovenbalk; de diavoorstellingsbediening ligt over de foto.
 
 Onder **Dit scherm instellen** kun je een inactiviteitstimer aanzetten. Standaard is deze uit. Open formulieren, niet-opgeslagen boodschappen en het routinescherm verhinderen automatisch wisselen. Aanrakingen in de geïntegreerde HA-weergave tellen mee als activiteit.
 

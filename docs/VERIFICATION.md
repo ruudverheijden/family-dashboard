@@ -93,3 +93,9 @@ BEL-01 t/m BEL-05 zijn geïmplementeerd. Voltooide taken boeken de ingestelde pu
 De beloningscatalogus wordt door een beheerder beheerd. Een gezinslid kan vanuit het tabblad Beloningen een aanvraag indienen; de punten worden gereserveerd zolang deze openstaat en pas bij beheergoedkeuring afgeschreven. Afwijzen geeft de reservering vrij. Aanvragen, besluiten en puntentransacties worden bewaard; request-ID’s en unieke ledger-bronnen voorkomen dubbele mutaties.
 
 Dagelijkse profielkeuze blijft een filter en geen authenticatie. De nieuwe API-tests en browserflow controleren transacties, herroeping, reservering, idempotentie, catalogusbeheer en oudergoedkeuring. Echte gezinsacceptatie en gelijktijdige fysieke apparaten blijven onderdeel van de bredere acceptatieronde.
+
+## Update: taken in de agenda zonder CalDAV
+
+Lokale taakuitvoeringen verschijnen nu op hun geplande dagen in de dag- en weekagenda, inclusief direct afvinken en filtering per gezinslid. Voor een weekoverzicht vraagt de API alle zeven dagen op. CalDAV is optioneel en voegt uitsluitend privéafspraken toe; zonder account werkt de gezinsplanner normaal.
+
+Gecontroleerd: **70 backend-/unittests** en **32 Chromium-end-to-endtests** geslaagd. De nieuwe acceptatietest controleert een dagelijkse taak op alle dagen van een week zonder CalDAV-koppeling.

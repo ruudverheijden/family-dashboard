@@ -1,14 +1,19 @@
+import asyncio
+import hashlib
 import json
 import os
 import sqlite3
+import stat
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException, Request, Response
 from fastapi.testclient import TestClient
-from app import db, integrations, main
+from app import backup, db, integrations, main
 
 HEAD = {'X-Family-Request': '1'}
 SYNC_CALENDARS = integrations.sync_calendars
@@ -22,8 +27,15 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(integrations, 'sync_calendars', lambda: None)
     monkeypatch.setattr(integrations, 'sync_photos', lambda: None)
     main.sessions.clear()
+    with main.login_lock:
+        main.attempts.clear()
     main.sessions['test-admin'] = 10**12
     with TestClient(main.app, headers=HEAD) as c:
+        with db.connect() as connection:
+            connection.execute(
+                'UPDATE login_limiter SET tokens=?,updated_at=? WHERE id=1',
+                (main.LOGIN_BURST, time.time()),
+            )
         c.cookies.set('family_admin', 'test-admin')
         yield c
 
@@ -57,6 +69,91 @@ def test_cross_origin_rejected(client):
     assert client.post('/api/logout', headers={'Origin':'https://evil.example'}).status_code == 403
     with TestClient(main.app) as c:
         assert c.post('/api/logout').status_code == 403
+
+def test_request_body_limit_rejects_large_content_length(client):
+    response = client.post(
+        '/api/logout',
+        content=b'x' * (main.MAX_REQUEST_BODY_BYTES + 1),
+        headers={**HEAD, 'Content-Type': 'application/json'},
+    )
+    assert response.status_code == 413
+    assert response.json() == {'detail': 'Verzoek is te groot.'}
+
+def test_request_body_limit_rejects_oversized_stream_without_content_length():
+    middleware = main.RequestBodyLimitMiddleware(lambda *args: pytest.fail('Oversized body reached the application'), 4)
+    messages = iter([
+        {'type': 'http.request', 'body': b'123', 'more_body': True},
+        {'type': 'http.request', 'body': b'456', 'more_body': False},
+    ])
+    sent = []
+
+    async def receive():
+        return next(messages)
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(middleware(
+        {'type': 'http', 'method': 'POST', 'path': '/api/login', 'headers': []},
+        receive,
+        send,
+    ))
+    assert sent[0]['status'] == 413
+
+def test_login_rate_limit_is_shared_across_ip_addresses(client, monkeypatch):
+    monkeypatch.setattr(main, 'ADMIN_PASSWORD', 'fictional-test-password')
+    monkeypatch.setattr(
+        main,
+        'ADMIN_HASH',
+        hashlib.scrypt('fictional-test-password'.encode(), salt=main.SALT, n=16384, r=8, p=1),
+    )
+    for index in range(main.LOGIN_BURST):
+        request = Request({
+            'type': 'http',
+            'http_version': '1.1',
+            'method': 'POST',
+            'scheme': 'http',
+            'path': '/api/login',
+            'raw_path': b'/api/login',
+            'query_string': b'',
+            'headers': [],
+            'client': (f'192.0.2.{index + 1}', 1234),
+            'server': ('testserver', 80),
+        })
+        with pytest.raises(HTTPException) as error:
+            main.login(main.Login(password='incorrect'), request, Response())
+        assert error.value.status_code == 401
+
+    with db.connect() as connection:
+            assert connection.execute('SELECT tokens FROM login_limiter WHERE id=1').fetchone()[0] < 1
+    with main.login_lock:
+        main.attempts.clear()
+
+    request = Request({
+        'type': 'http',
+        'http_version': '1.1',
+        'method': 'POST',
+        'scheme': 'http',
+        'path': '/api/login',
+        'raw_path': b'/api/login',
+        'query_string': b'',
+        'headers': [],
+        'client': ('192.0.2.99', 1234),
+        'server': ('testserver', 80),
+    })
+    with pytest.raises(HTTPException) as error:
+        main.login(main.Login(password='incorrect'), request, Response())
+    assert error.value.status_code == 429
+    assert error.value.headers['Retry-After']
+
+def test_backup_is_created_with_private_permissions(client, tmp_path):
+    destination = tmp_path / 'family-backup.db'
+    backup.create_backup(destination, db.DATA / 'family.db')
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+    with pytest.raises(FileExistsError):
+        backup.create_backup(destination, db.DATA / 'family.db')
 
 def test_environment_loader_reads_dotenv_without_overriding_environment(tmp_path, monkeypatch):
     env_file=tmp_path/'.env'
@@ -266,6 +363,28 @@ def test_individual_tasks_and_routine_new_day(client):
     tomorrow = (datetime.fromisoformat(today)+timedelta(days=1)).date().isoformat()
     assert all(r['done'] == [] for r in client.get('/api/state',params={'day':tomorrow}).json()['runs'])
     assert next(r for r in client.get('/api/state').json()['runs'] if r['id']==run['id'])['done'] == [0]
+
+def test_week_state_includes_local_task_occurrences_without_caldav(client):
+    _, body, today = setup_task(client)
+    current = datetime.fromisoformat(today).date()
+    monday = current - timedelta(days=current.weekday())
+    body['date'] = monday.isoformat()
+    task_id, saved = create(client, 'tasks', body)
+    assert saved.status_code == 200
+    state = client.get('/api/state', params={'day': today, 'period': 'week'})
+    assert state.status_code == 200
+    result = state.json()
+    occurrences = [r for r in result['runs'] if r['template_id'] == task_id]
+    assert len(occurrences) == 7
+    assert {r['day'] for r in occurrences} == {
+        (monday + timedelta(days=offset)).isoformat() for offset in range(7)
+    }
+    assert result['events'] == []
+    assert result['config']['caldav_configured'] is False
+
+def test_state_rejects_unknown_calendar_period(client):
+    today = client.get('/api/state').json()['day']
+    assert client.get('/api/state', params={'day': today, 'period': 'month'}).status_code == 422
 
 def test_routine_concurrent_different_steps_conflict(client):
     setup_task(client,kind='routines')

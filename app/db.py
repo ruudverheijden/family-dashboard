@@ -37,6 +37,12 @@ def init():
         CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS calendars (id TEXT PRIMARY KEY, body TEXT);
         CREATE TABLE IF NOT EXISTS status (id TEXT PRIMARY KEY, body TEXT);
+        CREATE TABLE IF NOT EXISTS login_limiter (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            tokens REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+        INSERT OR IGNORE INTO login_limiter VALUES (1,5,0);
         CREATE TABLE IF NOT EXISTS point_transactions (
             id TEXT PRIMARY KEY,
             member_id TEXT NOT NULL,

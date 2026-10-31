@@ -9,7 +9,7 @@ Bouw een zelfstandig te hosten gezinsdashboard dat planning, taken, routines, bo
 - De interface werkt op kleine en grote touchscreens, tablets en mobiele telefoons, in liggende en staande oriëntatie.
 - De broncode en installatie-instructies worden publiek op GitHub gepubliceerd.
 - Lokale basisfunctionaliteit vereist geen abonnement of externe clouddienst.
-- CalDAV is de enige externe agendakoppeling.
+- Lokale taken, routines en boodschappen werken zonder agenda-integratie. CalDAV is optioneel en voegt privéafspraken toe.
 - Home Assistant en Immich zijn bestaande, afzonderlijke services.
 - Recepten, maaltijdplanning, voedingswaarden en voorraadbeheer vallen buiten scope.
 
@@ -27,7 +27,7 @@ Dit document beschrijft de gewenste eigen toepassing. HiveFamily dient als funct
 |---|---|---|
 | UI-01 | P0 | Drie permanent zichtbare hoofdtabs: Kalender, Home Assistant en Immich. |
 | UI-02 | P0 | Vanuit ieder onderdeel met één tik naar de andere hoofdtabs kunnen wisselen, zonder browsernavigatie of opnieuw aanmelden. |
-| UI-03 | P0 | Kalender is het standaardtabblad en bevat de gezinsplanner, met subnavigatie naar Agenda, Taken, Routines en Boodschappen. |
+| UI-03 | P0 | Kalender is het standaardtabblad en bevat de gezinsplanner, met subnavigatie naar Agenda, Taken, Routines, Boodschappen en Beloningen. De agenda toont lokale taakuitvoeringen op hun geplande datum, ook zonder CalDAV. |
 | UI-04 | P0 | Beheerinstellingen zijn bereikbaar via een afzonderlijke beveiligde beheerknop. |
 | UI-05 | P0 | De indeling past zich aan beschikbare schermruimte aan; op mobiel mag een weekoverzicht veranderen in een leesbare dag- of lijstweergave. |
 | UI-06 | P0 | Geen vaste afhankelijkheid van schermresolutie, apparaatmodel of oriëntatie. Ondersteun minimaal 320 CSS-pixels breedte zonder verlies van kernfunctionaliteit. |
@@ -48,17 +48,17 @@ Dit document beschrijft de gewenste eigen toepassing. HiveFamily dient als funct
 | GEZ-05 | P0 | Beheerinstellingen en integratiegeheimen afschermen met authenticatie. |
 | GEZ-06 | P1 | Per gezinslid configureerbare rechten en oudergoedkeuring voor geselecteerde handelingen. |
 
-## 5. Agenda via CalDAV
+## 5. Lokale agenda en optionele CalDAV
 
 | ID | Prioriteit | Requirement |
 |---|---|---|
-| AG-01 | P0 | Dag- en weekoverzicht met gezinsleden, kleuren en filters. |
-| AG-02 | P0 | Eén of meer CalDAV-accounts configureren via serveradres en inloggegevens. |
+| AG-01 | P0 | Dag- en weekoverzicht met gezinsleden, kleuren en filters. Toon lokale taken altijd op de juiste datum, naast eventuele CalDAV-afspraken. |
+| AG-02 | P0 | Optioneel één of meer CalDAV-accounts configureren via serveradres en inloggegevens voor privéafspraken. |
 | AG-03 | P0 | Beschikbare agenda’s ophalen, selecteren en aan gezinsleden koppelen. |
 | AG-04 | P0 | Afspraken, herhalingen, uitzonderingen, hele-dagafspraken en tijdzones correct verwerken. |
 | AG-05 | P0 | Nieuwe, gewijzigde en verwijderde afspraken synchroniseren zonder duplicaten. |
 | AG-06 | P0 | Laatste succesvolle synchronisatie en fouten tonen; eerder opgehaalde gegevens bij storingen behouden. |
-| AG-07 | P0 | CalDAV is de bron voor afspraken; lokaal wordt een gesynchroniseerde kopie bewaard. |
+| AG-07 | P0 | Voor gekoppelde privéafspraken is CalDAV de bron en wordt lokaal een gesynchroniseerde kopie bewaard. Taken en routines zijn lokale gegevens en vereisen geen CalDAV. |
 | AG-08 | P0 | Inloggegevens uitsluitend server-side gebruiken. |
 | AG-09 | P1 | Maandoverzicht en herinneringen. |
 | AG-10 | Open keuze | Afspraken via het dashboard aanmaken, wijzigen en verwijderen. Indien ondersteund: terugschrijven via CalDAV, alleen-lezen agenda’s respecteren en conflicten zichtbaar afhandelen. |
@@ -73,12 +73,10 @@ Geen afzonderlijke ICS-import of leveranciersspecifieke agenda- en schoolkoppeli
 | TK-02 | P0 | Eenmalige en herhalende taken, met een aparte voltooiingsstatus per uitvoering. |
 | TK-03 | P0 | Afvinken, ongedaan maken en historie bewaren. |
 | TK-04 | P0 | Bij meerdere verantwoordelijken kiezen tussen individuele uitvoeringen en één gezamenlijke uitvoering. |
-| TK-05 | P1 | Taken laten rouleren volgens een ingesteld rooster. |
 | RT-01 | P0 | Routines maken uit geordende stappen met pictogram en tekst. |
 | RT-02 | P0 | Routines toewijzen aan gezinsleden, weekdagen en tijdvensters. |
 | RT-03 | P0 | Voortgang per persoon en uitvoering tonen. Nieuwe uitvoeringen beginnen opnieuw zonder historie te wijzigen. |
 | RT-04 | P0 | Gemiste stappen nooit automatisch voltooien. |
-| RT-05 | P1 | Vakantiepauzes en uitzonderingen. |
 
 ## 7. Punten en beloningen
 

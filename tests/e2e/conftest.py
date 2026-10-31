@@ -50,7 +50,7 @@ def dashboard(page, server):
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(server)
-    expect(page.get_by_role('heading', name='Ruimte voor het dagelijks leven.')).to_be_visible()
+    expect(page.locator('#calendar-date')).to_be_visible()
     yield page
     page.unroute_all(behavior="wait")
     assert not errors, errors

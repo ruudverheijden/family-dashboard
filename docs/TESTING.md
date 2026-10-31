@@ -30,8 +30,9 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 | UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, 320×740, 740×320, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
 | GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, avatar, filtering, vergrendelen en onbevoegde API-toegang |
-| AG-01, AG-04 | Dag/week, gezinsfilter, meerdaagse afspraak, tweemaal 02:30 bij wintertijd; browserfixture |
-| AG-02–08 | Bestaande backendtests voor CalDAV-herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
+| UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar op hun geplande dagen in dag- en weekagenda, zonder CalDAV; filter per gezinslid en direct afvinken vanuit agenda |
+| AG-01, AG-04 | Dag/week, CalDAV-afspraken, meerdaagse afspraak, tweemaal 02:30 bij wintertijd; browserfixture |
+| AG-02–08 | CalDAV optioneel; backendtests voor herhaling, uitzonderingen, atomair vervangen/verwijderen, behoud bij storing en geheimen; echte serveracceptatie blijft open |
 | TK-01–04 | Taak met beschrijving/punten, individuele en gezamenlijke toewijzing, dagelijkse uitvoering, voltooien/heropenen, herladen, historie en gezinsfilter |
 | RT-01–04 | Geordende stappen, voortgang persistent na herladen, volgende dag leeg en vorige dag ongewijzigd; backendtests voor conflict/snapshots/inhaalperiode |
 | BEL-01–05 | Punten per taakuitvoering en volledig afgeronde routine, tegenboeking bij ongedaan maken, unieke transacties, gedeelde taakbeloning per verantwoordelijke, gereserveerde aanvraag, beheergoedkeuring/-afwijzing en idempotente herhaling |
@@ -73,3 +74,10 @@ Firefox blijft in CI opgenomen voor uitvoering op Linux. De lokale Firefox-opsta
 - Chromium: **29/29 end-to-endtests geslaagd**.
 - WebKit: de nieuwe beloningsaanvraag-/goedkeuringsflow **1/1 geslaagd**; de volledige WebKit-suite is niet opnieuw uitgevoerd.
 - Firefox is voor deze update niet opnieuw uitgevoerd.
+
+## Update: lokale taken in de agenda zonder CalDAV
+
+De week-API levert nu geplande taakuitvoeringen voor alle zeven dagen; de agenda toont en laat deze direct afvinken, ook als geen CalDAV-account is ingesteld. De browser toont in dat geval dat CalDAV optioneel is voor privéafspraken.
+
+- Backend en unittests: **70/70 geslaagd**.
+- Chromium: **32/32 end-to-endtests geslaagd**, inclusief dagelijks terugkerende taken op alle zeven dagen zonder CalDAV.

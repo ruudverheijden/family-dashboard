@@ -1,5 +1,6 @@
 """Requirement IDs identify acceptance coverage; integration responses are explicit fixtures."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -11,6 +12,17 @@ from conftest import login, add_member, save, section, grocery
 def test_navigation_responsive_UI01_09(dashboard, size):
     p = dashboard
     p.set_viewport_size(dict(zip(('width', 'height'), size)))
+    expect(p.locator('#calendar-date')).to_be_visible()
+    expect(p.locator('.welcome')).to_have_count(0)
+    if size[0] <= 420:
+        expect(p.locator('#calendar-date-compact')).to_be_visible()
+    else:
+        expect(p.locator('#calendar-date-full')).to_be_visible()
+    if size[0] <= 760:
+        p.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        expect(p.locator('.topbar')).to_be_in_viewport()
+        expect(p.locator('#calendar-date')).to_be_in_viewport()
+        p.evaluate('window.scrollTo(0, 0)')
     previous = p.locator('.date-nav h2').inner_text()
     p.get_by_role('button', name='Volgende week').click()
     expect(p.locator('.date-nav h2')).not_to_have_text(previous)
@@ -195,6 +207,91 @@ def test_task_edit_updates_overview(dashboard):
     expect(row).not_to_contain_text('Oude titel')
 
 
+def test_task_overview_shows_all_owners_and_active_weekdays(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    p.get_by_role('button', name='Beheerinstellingen', exact=True).click()
+    add_member(p, 'Sam')
+    section(p, 'Taken')
+    p.get_by_role('button', name='Nieuwe taak', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Planten water geven')
+    p.get_by_label('Alex', exact=True).check()
+    p.get_by_label('Sam', exact=True).check()
+    p.get_by_label('Herhaling').select_option('weekly')
+    current_weekday = p.request.get(p.url + 'api/state').json()['day']
+    first_day = date.fromisoformat(current_weekday).weekday()
+    active_days = {first_day, (first_day + 2) % 7}
+    for index, checkbox in enumerate(p.locator('input[name="weekdays"]').all()):
+        if index not in active_days:
+            checkbox.uncheck()
+    save(p)
+
+    row = p.locator('.task-row').first
+    expect(row.locator('.task-owners')).to_have_text('Voor: Alex, Sam')
+    expect(row.locator('.task-schedule')).to_have_text(
+        ', '.join(['maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag', 'zondag'][i]
+                  for i in sorted(active_days)))
+
+def test_calendar_always_shows_local_tasks_without_caldav(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    today = date.fromisoformat(p.request.get(p.url + 'api/state').json()['day'])
+    monday = today - timedelta(days=today.weekday())
+    section(p, 'Taken')
+    p.get_by_role('button', name='Nieuwe taak', exact=True).click()
+    p.get_by_label('Titel', exact=True).fill('Dagelijks opruimen')
+    p.get_by_label('Startdatum').fill(monday.isoformat())
+    p.get_by_label('Herhaling').select_option('daily')
+    p.get_by_label('Alex', exact=True).check()
+    save(p)
+
+    section(p, 'Agenda')
+    cards = p.locator('.agenda-task')
+    expect(cards).to_have_count(7)
+    for column in p.locator('.day-column').all():
+        expect(column.locator('.agenda-task')).to_have_count(1)
+        expect(column.locator('.agenda-task')).to_contain_text('Dagelijks opruimen')
+    expect(p.get_by_role('heading', name='Je gezinsplanning werkt zonder agenda-koppeling')).to_be_visible()
+    assert p.request.get(p.url + 'api/state').json()['config']['caldav_configured'] is False
+
+    p.get_by_role('button', name='Voltooi Dagelijks opruimen').first.click()
+    expect(p.locator('.agenda-task.done')).to_have_count(1)
+
+
+def test_task_icon_is_selected_from_relevant_choices(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    section(p, 'Taken')
+    p.get_by_role('button', name='Nieuwe taak', exact=True).click()
+    icon_choices = p.locator('[data-task-icon]')
+    assert icon_choices.count() >= 50
+    expect(icon_choices.filter(has_text='🧹')).to_have_count(1)
+    expect(p.locator('.task-icon-picker')).to_be_hidden()
+    p.locator('.task-icon-trigger').click()
+    expect(p.locator('.task-icon-picker')).to_be_visible()
+    p.get_by_role('button', name='Vegen', exact=True).click()
+    expect(p.locator('.task-icon-picker')).to_be_hidden()
+    expect(p.locator('.task-icon-trigger')).to_contain_text('🧹')
+    p.get_by_label('Titel', exact=True).fill('Stofzuigen')
+    p.get_by_label('Alex', exact=True).check()
+    save(p)
+
+    expect(p.locator('.task-row .task-icon').first).to_have_text('🧹')
+    p.get_by_role('button', name='Taak bewerken').click()
+    expect(p.locator('input[name="icon"]')).to_have_value('🧹')
+    selected_icon = p.locator('[data-task-icon][aria-pressed="true"]')
+    expect(selected_icon).to_have_attribute('aria-label', 'Vegen')
+    expect(p.locator('.task-icon-picker')).to_be_hidden()
+    p.locator('.task-icon-trigger').click()
+    expect(p.locator('.task-icon-picker')).to_be_visible()
+    p.keyboard.press('Escape')
+    expect(p.locator('.task-icon-picker')).to_be_hidden()
+    expect(p.locator('.task-icon-trigger')).to_contain_text('🧹')
+
+
 def test_routine_progress_new_day_RT01_04(dashboard):
     p = dashboard
     login(p)
@@ -246,7 +343,50 @@ def photos(p):
     p.route('**/api/state*', state)
     p.route('**/api/photos/*', lambda r: r.fulfill(content_type='image/svg+xml', body='<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="green"/></svg>'))
     p.reload()
-    expect(p.get_by_role('heading', name='Ruimte voor het dagelijks leven.')).to_be_visible()
+    expect(p.locator('#calendar-date')).to_be_visible()
+
+
+@pytest.mark.parametrize('size', [(320,740), (1440,1000)])
+def test_integrations_fill_screen_below_topbar(dashboard, size):
+    p = dashboard
+    p.set_viewport_size(dict(zip(('width', 'height'), size)))
+
+    def state(route):
+        response = route.fetch()
+        body = response.json()
+        body['config']['ha_url'] = 'http://home-assistant.example.test:8123'
+        body['config']['ha_dashboard'] = '/dashboard-family/overview'
+        body['photos'] = [{'id': 'one', 'album':'Testalbum'}]
+        route.fulfill(response=response, json=body)
+
+    p.route('**/api/state*', state)
+    p.reload()
+    p.get_by_role('button', name='Home Assistant', exact=True).click()
+    frame = p.locator('#ha-dashboard')
+    expect(frame).to_have_attribute('src', 'http://home-assistant.example.test:8123/dashboard-family/overview')
+    expect(p.locator('.welcome')).to_have_count(0)
+    expect(p.locator('footer')).to_have_css('display', 'none')
+
+    header = p.locator('.topbar').bounding_box()
+    frame_box = frame.bounding_box()
+    assert frame_box['x'] == 0
+    assert frame_box['y'] == pytest.approx(header['y'] + header['height'], abs=1)
+    assert frame_box['width'] == pytest.approx(size[0], abs=1)
+    assert frame_box['y'] + frame_box['height'] == pytest.approx(size[1], abs=1)
+
+    if size[0] <= 760:
+        nav = p.locator('.main-tabs')
+        assert nav.evaluate('(element) => getComputedStyle(element).position') == 'static'
+        nav_box = nav.bounding_box()
+        assert nav_box['y'] >= header['y']
+        assert nav_box['y'] + nav_box['height'] <= header['y'] + header['height']
+
+    p.get_by_role('button', name='Immich', exact=True).click()
+    stage_box = p.locator('.photo-stage').bounding_box()
+    assert stage_box['x'] == 0
+    assert stage_box['y'] == pytest.approx(header['y'] + header['height'], abs=1)
+    assert stage_box['width'] == pytest.approx(size[0], abs=1)
+    assert stage_box['y'] + stage_box['height'] == pytest.approx(size[1], abs=1)
 
 
 def test_slideshow_controls_failure_IM02_06_10_12(dashboard):
