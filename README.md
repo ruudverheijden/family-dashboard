@@ -25,11 +25,113 @@ Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en
 
 Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filter en geen authenticatie. De kindmodus vereenvoudigt de bediening maar biedt geen toegangsbeveiliging. Alleen een beheerder kan de beloningscatalogus beheren en aanvragen goedkeuren. Recepten en maaltijdplanning zijn niet opgenomen.
 
-## Installeren met Docker Compose
+## Installeren via Docker Hub
 
-Benodigd: Docker Engine met Compose v2 op een Linux amd64- of arm64-host. De Dockerfile bouwt vanuit de officiële multi-architectuur Python-image. Architectuurbuilds staan in CI, maar zijn in deze opleveromgeving niet uitgevoerd: Docker Engine draaide hier niet. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de host nodig.
+De kant-en-klare image staat op [Docker Hub: ruudv/family-dashboard](https://hub.docker.com/r/ruudv/family-dashboard).
+Je hoeft de broncode niet te downloaden of zelf te bouwen.
 
-1. Kopieer deze projectmap naar de server (of clone de repository zodra die is gepubliceerd).
+**Tag:** `ruudv/family-dashboard:0.1.0`. Deze gepubliceerde versie ondersteunt
+**Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+.
+Er is voor deze release nog geen arm64-image gepubliceerd. Gebruik de expliciete
+versietag; er wordt geen `latest`-tag aangeboden.
+
+### Docker Compose
+
+Benodigd: een Docker-host met Docker Compose v2. Maak een lege installatiemap en
+sla onderstaande configuratie op als `compose.yaml`:
+
+```yaml
+services:
+  dashboard:
+    image: ruudv/family-dashboard:0.1.0
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Stel ADMIN_PASSWORD in}
+      TZ: ${TZ:-Europe/Amsterdam}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      CACHE_MB: ${CACHE_MB:-128}
+      DATA_DIR: /data
+      CACHE_DIR: /cache
+    volumes:
+      - family-data:/data
+      - family-cache:/cache
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  family-data:
+  family-cache:
+```
+
+Maak daarnaast een bestand `.env` met een eigen, uniek beheerwachtwoord:
+
+```dotenv
+ADMIN_PASSWORD=kies-hier-een-eigen-uniek-wachtwoord
+PORT=8080
+TZ=Europe/Amsterdam
+COOKIE_SECURE=false
+CACHE_MB=128
+```
+
+Start vanuit die map:
+
+```sh
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Open `http://<serveradres>:8080`, open beheer en meld je aan met je gekozen
+wachtwoord. Voeg daarna je gezinsleden toe. Een nieuwe installatie start leeg;
+CalDAV, Home Assistant en Immich zijn optioneel.
+
+### Portainer / Synology
+
+Kies in de Docker-omgeving van Portainer **Stacks → Add stack → Web editor**,
+geef de stack bijvoorbeeld de naam `family-dashboard` en plak dezelfde YAML.
+Voeg onder **Environment variables** de waarden uit het bovenstaande
+`.env`-voorbeeld toe, met je eigen `ADMIN_PASSWORD`. Je kunt hiervoor ook
+**Load variables from .env file** gebruiken. Klik daarna op **Deploy the stack**.
+
+De benoemde volumes worden door Docker aangemaakt; handmatig mappen maken op de
+NAS is voor deze configuratie niet nodig. Bij een private Docker Hub-repository
+moet je eerst Docker Hub met je account toevoegen aan de registries in Portainer.
+Voor installatie door anderen zonder account moet de image-repository publiek zijn.
+
+### Opslag, bestaande instellingen en updates
+
+`/data` bevat de SQLite-database met gezinsgegevens, gezamenlijke instellingen en
+integratiegeheimen. `/cache` bevat vervangbare foto's. Beide staan in volumes en
+blijven bij containervervanging behouden. Gebruik **geen** `docker compose down -v`:
+dat verwijdert de volumes.
+
+Een bestaande configuratie verhuis je via een consistente databaseback-up,
+plus je eigen omgevingsvariabelen. Volg [Back-up en herstel](#back-up-en-herstel);
+kopieer geen live databasebestand. Browservoorkeuren onder **Dit apparaat**
+worden bij een nieuw adres opnieuw ingesteld. Bij herstel is
+`family-backup.db` de naam van je back-upbestand, niet de naam van de actieve database.
+
+Maak vóór een update een back-up, wijzig de image-tag naar de gewenste gepubliceerde
+versie en voer `docker compose pull` en `docker compose up -d` uit.
+In Portainer wijzig je de tag in de stack-editor en kies je **Update the stack**.
+Behoud dezelfde stacknaam en volumes.
+
+Gebruik deze versie op een vertrouwd thuisnetwerk en stel geen publieke
+router-port-forward in. Stel `COOKIE_SECURE=true` in als je uitsluitend HTTPS gebruikt.
+Zie [Configuratie](#configuratie) voor eigen opslagpaden en schrijfrechten.
+
+## Zelf bouwen met Docker Compose
+
+Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux amd64 of arm64 bouwen. De gepubliceerde Docker Hub-image voor 0.1.0 is alleen voor amd64; de amd64-build en containerstart zijn lokaal op een Mac via emulatie gecontroleerd. Een arm64-build en uitvoering op een fysieke NAS zijn nog niet geverifieerd. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de Docker-host nodig.
+
+1. Clone [de GitHub-repository](https://github.com/ruudverheijden/family-dashboard) of kopieer deze projectmap naar de server.
 2. Kopieer `.env.example` naar `.env`. Vervang `ADMIN_PASSWORD` door een eigen wachtwoord. Pas eventueel `PORT` aan.
 3. Start in de projectmap:
 
@@ -134,7 +236,7 @@ Gebruik voor herstel een leeg datavolume. Behoud de oude installatie tot je de n
 
 ## Updates en ontwikkeling
 
-Maak eerst een back-up. Vervang de broncode door de gewenste versie en voer `docker compose up -d --build` uit. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
+Bij een installatie vanuit broncode: maak eerst een back-up. Vervang de broncode door de gewenste versie en voer `docker compose up -d --build` uit. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
 
 Databaseschema: versie 2 via `PRAGMA user_version`; bestaande versie-1-databases krijgen bij starten automatisch de tabellen voor punten en beloningsaanvragen. De applicatie weigert een database met een nieuwere schemaversie. Downgraden na migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
 
@@ -158,7 +260,7 @@ Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-
 
 ## Publieke distributie
 
-Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. Er is nog geen GitHub-repository aangemaakt of gepubliceerd. De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
+Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. De broncode staat op [GitHub](https://github.com/ruudverheijden/family-dashboard) en de gebouwde amd64-image op [Docker Hub](https://hub.docker.com/r/ruudv/family-dashboard). De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
 
 
 ## Licentie
