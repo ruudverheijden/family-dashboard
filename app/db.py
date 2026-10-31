@@ -4,15 +4,17 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DATA = Path(os.getenv('DATA_DIR', './data'))
+DATA = Path(os.getenv("DATA_DIR", "./data"))
+
 
 @contextmanager
-def connect():
-    DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
-    db = sqlite3.connect(DATA / 'family.db', timeout=15)
-    (DATA / 'family.db').chmod(0o600)
+def connect(data_dir=None):
+    data_dir = Path(data_dir) if data_dir is not None else DATA
+    data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    db = sqlite3.connect(data_dir / "family.db", timeout=15)
+    (data_dir / "family.db").chmod(0o600)
     db.row_factory = sqlite3.Row
-    db.execute('PRAGMA foreign_keys=ON')
+    db.execute("PRAGMA foreign_keys=ON")
     try:
         yield db
         db.commit()
@@ -22,13 +24,14 @@ def connect():
     finally:
         db.close()
 
-def init():
-    with connect() as db:
-        db.execute('PRAGMA journal_mode=WAL')
-        version = db.execute('PRAGMA user_version').fetchone()[0]
+
+def init(data_dir=None):
+    with connect(data_dir) as db:
+        db.execute("PRAGMA journal_mode=WAL")
+        version = db.execute("PRAGMA user_version").fetchone()[0]
         if version > 2:
-            raise RuntimeError('Database is nieuwer dan deze applicatie')
-        db.executescript('''
+            raise RuntimeError("Database is nieuwer dan deze applicatie")
+        db.executescript("""
         CREATE TABLE IF NOT EXISTS entities (kind TEXT, id TEXT, version INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(kind,id));
         CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, kind TEXT, template_id TEXT, day TEXT, member TEXT, body TEXT, done TEXT NOT NULL DEFAULT '[]', version INTEGER NOT NULL DEFAULT 1);
         CREATE TABLE IF NOT EXISTS schedule_cursor (id TEXT PRIMARY KEY, day TEXT);
@@ -66,28 +69,65 @@ def init():
         );
         CREATE INDEX IF NOT EXISTS reward_requests_status ON reward_requests(status, created_at);
         PRAGMA user_version=2;
-        ''')
-        db.execute('INSERT OR IGNORE INTO settings VALUES (1,1,?)', (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'ha_dashboard': '/lovelace/0', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15, 'brand_title': 'samen', 'brand_subtitle': 'een plek voor ons allemaal', 'brand_image': ''}),))
-        row = db.execute('SELECT body FROM settings WHERE id=1').fetchone()
-        stored = json.loads(row['body'])
-        legacy_token = stored.pop('ha_token', None)
-        legacy_entities = stored.pop('ha_entities', None)
+        """)
+        db.execute(
+            "INSERT OR IGNORE INTO settings VALUES (1,1,?)",
+            (
+                json.dumps(
+                    {
+                        "timezone": "Europe/Amsterdam",
+                        "caldav": [],
+                        "ha_url": "",
+                        "ha_dashboard": "/lovelace/0",
+                        "immich_url": "",
+                        "immich_key": "",
+                        "albums": [],
+                        "slide_seconds": 15,
+                        "brand_title": "samen",
+                        "brand_subtitle": "een plek voor ons allemaal",
+                        "brand_image": "",
+                    }
+                ),
+            ),
+        )
+        row = db.execute("SELECT body FROM settings WHERE id=1").fetchone()
+        stored = json.loads(row["body"])
+        legacy_token = stored.pop("ha_token", None)
+        legacy_entities = stored.pop("ha_entities", None)
         if legacy_token is not None or legacy_entities is not None:
-            db.execute('UPDATE settings SET body=? WHERE id=1', (json.dumps(stored),))
+            db.execute("UPDATE settings SET body=? WHERE id=1", (json.dumps(stored),))
+
 
 def settings(db):
-    row = db.execute('SELECT * FROM settings WHERE id=1').fetchone()
-    stored = json.loads(row['body'])
-    stored.pop('ha_token', None)
-    stored.pop('ha_entities', None)
+    row = db.execute("SELECT * FROM settings WHERE id=1").fetchone()
+    stored = json.loads(row["body"])
+    stored.pop("ha_token", None)
+    stored.pop("ha_entities", None)
     return {
-        'ha_dashboard': '/lovelace/0',
-        'brand_title': 'samen',
-        'brand_subtitle': 'een plek voor ons allemaal',
-        'brand_image': '',
+        "ha_dashboard": "/lovelace/0",
+        "brand_title": "samen",
+        "brand_subtitle": "een plek voor ons allemaal",
+        "brand_image": "",
         **stored,
-        'version': row['version'],
+        "version": row["version"],
     }
 
+
 def entities(db, kind):
-    return [{**json.loads(r['body']), 'id': r['id'], 'version': r['version']} for r in db.execute('SELECT * FROM entities WHERE kind=? ORDER BY rowid', (kind,))]
+    return [
+        {**json.loads(r["body"]), "id": r["id"], "version": r["version"]}
+        for r in db.execute("SELECT * FROM entities WHERE kind=? ORDER BY rowid", (kind,))
+    ]
+
+
+class Database:
+    """A database location owned by one application or test instance."""
+
+    def __init__(self, data_dir):
+        self.data_dir = Path(data_dir)
+
+    def connect(self):
+        return connect(self.data_dir)
+
+    def init(self):
+        init(self.data_dir)

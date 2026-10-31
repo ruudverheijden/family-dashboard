@@ -5,13 +5,22 @@ Uitgangspunt: [requirements v0.4 met status per requirement en resterende TODO�
 ## Uitvoeren
 
 ```sh
-.venv/bin/pip install -r requirements-test.txt
-.venv/bin/python -m playwright install chromium firefox webkit
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+.venv/bin/python tools/format_css.py --check
 .venv/bin/python -m pytest -q
+npm ci --ignore-scripts
+npm run format:check
+node --check app/static/app.js
+node --experimental-vm-modules tools/check_frontend.mjs
+.venv/bin/python -m playwright install chromium firefox webkit
 .venv/bin/python -m pytest tests/e2e --browser chromium --browser firefox --browser webkit --tracing retain-on-failure --screenshot only-on-failure --junitxml=test-results/results.xml
 ```
 
 Op Linux is voor installatie van browserafhankelijkheden `python -m playwright install --with-deps` beschikbaar. Alleen backendtests draaien met de gewone `pytest`-opdracht; de browsermap wordt expliciet gekozen. Browserdependencies staan apart van productiedependencies.
+
+`requirements-dev.txt` bevat de testdependencies plus Ruff en de CSS-formatter. JavaScript gebruikt Prettier, vastgepind in `package-lock.json`; Node/npm zijn alleen nodig voor ontwikkelchecks, niet voor installatie of productie. De modulecontrole gebruikt alleen Node, controleert ook imports/exports en weigert cyclische imports. De CI-workflow voert de backendtests, Ruff-controle, JavaScript-syntaxcontrole en containerchecks uit. De browsermatrix draait apart; zie `.github/workflows/browser-tests.yml`.
 
 Iedere browsertest start een echte Uvicorn-server op een vrije lokale poort met een nieuwe tijdelijke SQLite-database, een afzonderlijke fotocache en een fictief beheerwachtwoord. De tests lezen geen `.env`, gebruiken geen echte integratieaccounts en raken `data/family.db` niet aan. Twee-apparatentests gebruiken afzonderlijke browsercontexts met eigen cookies en localStorage. Playwright bewaart bij fouten screenshots en traces in `test-results/`. De GitHub-workflow voert dezelfde suite per browser uit en bewaart die bestanden 14 dagen.
 
@@ -37,7 +46,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 | RT-01–04 | Geordende stappen, voortgang persistent na herladen, volgende dag leeg en vorige dag ongewijzigd; backendtests voor conflict/snapshots/inhaalperiode |
 | BEL-01–05 | Punten per taakuitvoering en volledig afgeronde routine, tegenboeking bij ongedaan maken, unieke transacties, gedeelde taakbeloning per verantwoordelijke, gereserveerde aanvraag, beheergoedkeuring/-afwijzing en idempotente herhaling |
 | BO-01–08 | Toevoegen, details, bewerken, verwijderen, afvinken/herstellen/opruimen; tweede browser ziet toevoeging binnen 2 seconden; conflict bewaart invoer; verloren antwoord en herhaling veroorzaken geen duplicaat |
-| HA-01, HA-03–05 | Fixture voor geselecteerde lampbediening en alleen-lezen sensor; geïsoleerde fout; backendtests voor token, selectie en toegestane acties |
+| HA-01, HA-03–05 | Ingesloten Home Assistant-dashboard, ingesteld dashboardpad, schermvullende weergave en afwezigheid van de oude entiteiten-API; backendtests voor instellingen en verwijdering van oude HA-geheimen |
 | IM-02–06, IM-09–12 | Foto vooruit/achteruit/pauze, standaard contain, niet-beschikbare afbeeldingen, navigatie, fotoaanraking, inactiviteit en guards voor formulier/concept/routine |
 | IM-01, IM-05, IM-07–08 | Backendtests voor toelatingslijst, ingetrokken albumrechten en cachelimiet; eigenaar heeft Immich handmatig gevalideerd, maar EXIF-oriëntatie en albumintrekking niet afzonderlijk bevestigd |
 | IM-13 | Analoge klok met twaalf zichtbare cijfers, eerstvolgende toekomstige afspraak, wisseling naar volgende afspraak en lege toestand; responsive overflow |
@@ -102,3 +111,25 @@ Verificatie op 31 oktober 2026: 20 navigatie-, datum- en adminpaneelcontroles en
 De browsertests volgen nu de huidige interface: lokale taken worden zonder CalDAV weergegeven en afgevinkt zonder een aparte informatietekst; Home Assistant laadt rechtstreeks in het ingebouwde dashboard; de datum blijft zichtbaar in de bovenbalk bij Home Assistant en Immich. De tests blijven het geladen HA-dashboard, de afwezigheid van losse entiteitsaanroepen en volledige schermvulling onder de bovenbalk controleren. De schermvulling wordt ook in liggende iPhone 13-afmetingen gecontroleerd, inclusief horizontale overflow.
 
 Volledige browserrun: **92/92 geslaagd** in Chromium en WebKit (116,20 seconden). Eén deprecation-waarschuwing uit pytest-playwright; geen testfouten.
+
+## Architectuurregressies
+
+`tests/test_architecture.py` controleert onafhankelijke applicatie-instanties zonder `.env`,
+atomair terugrollen van taakvoltooiing bij een puntenfout, niet-blokkerende CalDAV/Immich-afhandeling,
+en het verwerpen van verouderde synchronisatie- en fotoantwoorden na gewijzigde instellingen.
+De bestaande API- en browsercontracten blijven het vangnet voor de herstructurering.
+
+De browserfixture start `create_app(AppConfig(...))` met tijdelijke paden en fictieve credentials.
+Zij gebruikt expliciete configuratie, zodat de productie-`.env` niet wordt gelezen.
+
+Formatters toepassen: `.venv/bin/ruff format .`, `npm run format` en `.venv/bin/python tools/format_css.py`.
+De CSS-formatter wijzigt geen regelvolgorde. Na wijzigingen aan schermgedrag moeten ook de
+browserchecks draaien; formatter- en modulecontroles bewijzen geen correct schermgedrag.
+
+## Laatste architectuurcontrole — 31 oktober 2026
+
+- Backend en units: **94 geslaagd**, inclusief de 10 architectuurregressies.
+- Chromium en WebKit: **132 geslaagd** (66 scenario’s per browser).
+- Python/JavaScript/CSS-opmaak, Ruff, JavaScript-syntax en modulegrenzen: geslaagd.
+- De navigatieregressie controleert ook dat de interactieve klok geen tabknoppen overlapt.
+- Zie [VERIFICATION.md](VERIFICATION.md) voor de volledige uitslag en niet-uitgevoerde controles.

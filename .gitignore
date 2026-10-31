@@ -8,3 +8,4 @@ cache/
 backups/
 .DS_Store
 test-results/
+node_modules/

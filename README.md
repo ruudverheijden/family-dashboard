@@ -63,7 +63,7 @@ Een CalDAV-koppeling is niet nodig voor de gezinsplanner: taken en routines word
 
 Open **Beheer → Account toevoegen**, vul een CalDAV-serveradres, gebruikersnaam en wachtwoord in en kies **Agenda’s ophalen**. Selecteer agenda’s, wijs een gezinslid toe en sla op. Meerdere accounts zijn mogelijk. Bij hetzelfde serveradres behoudt een leeg wachtwoord het bestaande geheim. Vul bij wijziging van het CalDAV-serveradres opnieuw het wachtwoord in; verwijderen van het account verwijdert ook de gekoppelde lokale agenda’s.
 
-Synchronisatie gebeurt bij het starten en daarna elke twee minuten (plus looptijd), of met **Nu synchroniseren**. De app vervangt de lokale kopie pas nadat alle geselecteerde agenda’s van dat account succesvol zijn opgehaald. Wijzigingen en verwijderingen worden zo zonder extra kopieën verwerkt. Bij fouten blijft de vorige kopie staan en worden fout en laatste succesmoment getoond. Het venster loopt van 90 dagen terug tot ongeveer één jaar vooruit. Agenda’s daarbuiten worden niet geladen.
+Synchronisatie gebeurt bij het starten en daarna elke drie minuten (plus looptijd), of met **Nu synchroniseren**. Ook die knop respecteert voor CalDAV de minimumafstand van drie minuten tussen synchronisatiestarts. De app vervangt de lokale kopie pas nadat alle geselecteerde agenda’s van dat account succesvol zijn opgehaald. Wijzigingen en verwijderingen worden zo zonder extra kopieën verwerkt. Bij fouten blijft de vorige kopie staan en worden fout en laatste succesmoment getoond. Het venster loopt van 90 dagen terug tot ongeveer één jaar vooruit. Agenda’s daarbuiten worden niet geladen.
 
 Afspraken worden niet lokaal aangemaakt of gewijzigd; CalDAV blijft de bron. Raadpleeg de [python-caldav zoekdocumentatie](https://caldav.readthedocs.io/stable/caldav/collection.html) voor het gebruikte protocolpad. De gebruikte bibliotheek verwerkt herhalingen lokaal met `recurring-ical-events`.
 
@@ -91,7 +91,7 @@ Herstart Home Assistant daarna. Gebruik dit alleen op een vertrouwd netwerk: uit
 
 Vul het basisadres **zonder `/api`** en een beperkte lees-API-sleutel met **`album.read`, `asset.read` en `asset.view`** in. Voer bij wijziging van het Immich-serveradres de API-sleutel opnieuw in. Kies **Albums ophalen**, selecteer expliciet de gewenste albums en sla op. Zonder selectie worden geen foto’s getoond. Oudere Immich-versies leveren foto's bij de albuminformatie; bij nieuwere versies haalt het dashboard alle pagina's op via `/api/search/metadata`, gefilterd op het geselecteerde album. Voor previews gebruikt het dashboard [asset previews](https://api.immich.app/endpoints/assets/viewAsset).
 
-De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke twee minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd. De Immich-fotolijst gebruikt, net als het HA-tabblad, de volledige ruimte onder de bovenbalk; de diavoorstellingsbediening ligt over de foto.
+De backend vraagt previewafbeeldingen op (geen originele bestanden), bewaart maximaal de ingestelde cacheomvang en verwijdert cachebestanden zodra foto’s uit de toegestane selectie verdwijnen. De albums worden elke drie minuten vernieuwd. Als albumrechten niet gecontroleerd kunnen worden, stopt de fotolijst en wordt de cache geleegd. Afbeeldingen worden niet blijvend in de browsercache opgeslagen. De bronalbums en foto’s worden nooit gewijzigd. De Immich-fotolijst gebruikt, net als het HA-tabblad, de volledige ruimte onder de bovenbalk; de diavoorstellingsbediening ligt over de foto.
 
 Onder **Beheer → Dit apparaat** kun je een inactiviteitstimer aanzetten. Standaard is deze uit. Open formulieren, niet-opgeslagen boodschappen en het routinescherm verhinderen automatisch wisselen. Aanrakingen in de geïntegreerde HA-weergave tellen mee als activiteit.
 
@@ -151,7 +151,9 @@ De `export`-regel is alleen nodig als je geen `.env` gebruikt of tijdelijk een a
 
 De uitgebreide Playwright-acceptatietests, browsermatrix en koppeling aan de oorspronkelijke requirements staan in [docs/TESTING.md](docs/TESTING.md). Deze tests draaien met afzonderlijke tijdelijke gegevens.
 
-Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-toelatingslijst zijn proceslokaal. De frontend is gewone HTML/CSS/JavaScript zonder bundler of npm-build. De GitHub Actions-workflow voert applicatietests, JavaScript-syntaxcontrole en containerbuilds voor beide architecturen uit, plus een healthcheck op amd64.
+Voor ontwikkelchecks installeer je `.venv/bin/pip install -r requirements-dev.txt` en voer je `.venv/bin/ruff check .` uit. JavaScript-opmaak wordt gecontroleerd met `npm ci --ignore-scripts` en `npm run format:check`; Node/npm zijn alleen ontwikkelhulpmiddelen. De projectbrede Definition of Done staat in [AGENTS.md](AGENTS.md); de PR-template bevat dezelfde verificatiechecklist.
+
+Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-toelatingslijst zijn proceslokaal. De frontend gebruikt gewone HTML/CSS en native JavaScript-modules zonder bundler of npm-build. De moduleverdeling en onderhoudsafspraken staan in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). De GitHub Actions-workflow voert applicatietests, Ruff, JavaScript-syntaxcontrole en containerbuilds voor beide architecturen uit, plus een healthcheck op amd64.
 
 ## Publieke distributie
 

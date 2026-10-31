@@ -40,7 +40,7 @@ Status betekent:
 | UI-02 | P0 | Vanuit ieder onderdeel met één tik naar de andere hoofdtabs kunnen wisselen, zonder browsernavigatie of opnieuw aanmelden. | Gereed |
 | UI-03 | P0 | Kalender is het standaardtabblad en bevat de gezinsplanner, met subnavigatie naar Agenda, Taken, Routines en Beloningen. Eén gedeelde datumselectie boven het gezinsfilter geldt voor deze datumgebonden onderdelen; boodschappen is een afzonderlijk hoofdtabblad. De agenda toont lokale taakuitvoeringen op hun geplande datum, ook zonder CalDAV. | Gereed |
 | UI-04 | P0 | Beheerinstellingen zijn bereikbaar via een afzonderlijke beveiligde beheerknop. | Gereed |
-| UI-05 | P0 | De indeling past zich aan beschikbare schermruimte aan; op mobiel mag een weekoverzicht veranderen in een leesbare dag- of lijstweergave. | Gereed |
+| UI-05 | P0 | De indeling past zich aan beschikbare schermruimte aan; op mobiel mag een weekoverzicht veranderen in een leesbare dag- of lijstweergave. De interactieve klok en hoofdnavigatie mogen elkaar niet overlappen; op tabletbreedtes kan de navigatie een eigen rij gebruiken. | Gereed |
 | UI-06 | P0 | Geen vaste afhankelijkheid van schermresolutie, apparaatmodel of oriëntatie. Minimaal ondersteund mobiel apparaat: iPhone 13, in staande en liggende oriëntatie, zonder verlies van kernfunctionaliteit. Verifieer beschikbare browser-viewports van 390×664 en 750×342 CSS-pixels. | Deels: fysieke apparaten niet getest |
 | UI-07 | P0 | Aanraakvlakken minimaal 48 × 48 CSS-pixels; bediening vereist geen hover. Ondersteun ook toetsenbordbediening en zichtbare focus. | Gereed |
 | UI-08 | P0 | Nederlandse interface, 24-uursklok, maandag als eerste weekdag en configureerbare tijdzone, standaard Europe/Amsterdam. | Deels: echte apparaat-/tijdzoneacceptatie open |

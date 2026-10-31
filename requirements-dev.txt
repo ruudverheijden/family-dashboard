@@ -1,0 +1,5 @@
+-r requirements-test.txt
+ruff==0.14.3
+# Transitive dependency of cssbeautifier; JavaScript uses Prettier.
+jsbeautifier==1.15.4
+cssbeautifier==1.15.4

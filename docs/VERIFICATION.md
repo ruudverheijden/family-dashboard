@@ -1,5 +1,56 @@
 # Verificatie 0.1.0
 
+## Architectuurherstructurering — 31 oktober 2026
+
+Stappen 1–5 uitgevoerd in de huidige werkboom, inclusief tussentijdse gebruikerswijzigingen
+voor klokpopup, dialoogsluiting en agendataken. De onderstaande eerdere oplevernotities blijven
+historisch bewijs; deze sectie beschrijft de laatste controle.
+
+| Controle | Resultaat |
+|---|---|
+| Backend en units, `.venv/bin/python -m pytest -q` | **94 geslaagd**, inclusief 10 nieuwe architectuurgevallen |
+| Volledige browsermatrix, Chromium en WebKit | **132 geslaagd** (66 per browser), 220,81 seconden |
+| Ruff lint en formattercontrole | Geslaagd |
+| Prettier JavaScript-opmaak en CSS-formattercontrole | Geslaagd |
+| JavaScript-entrypoint en modulecontrole | **17 modules** correct geparseerd/gekoppeld, geen cyclische imports |
+| `git diff --check` | Geslaagd |
+| Vergelijking met tussentijdse gebruikerswijzigingen | Alle frontendmodules inhoudelijk behouden, behalve gecorrigeerde synchronisatiehulptekst; alle bestaande CSS-regels in dezelfde volgorde behouden |
+| Vergelijking oorspronkelijke planning en puntenregels | Functie-inhoud ongewijzigd na verplaatsing naar services |
+
+De eerste uitgangscontrole vóór herstructurering was 84 backend-/unittests en 120 browsergevallen.
+De suite groeide daarna door de architectuurtests, gebruikerswijzigingen en de navigatieregressie.
+De uiteindelijke applicatie- en testbronbestanden bleven tijdens de laatste volledige browserrun
+ongewijzigd (gecontroleerd met bestandsvingerafdrukken).
+
+Nieuwe regressies toetsen geïsoleerde app-instanties en startupconfiguratie, atomair terugrollen
+van voltooiing/punten/historie, onafhankelijke integraties, gewijzigde instellingen tijdens
+synchronisatie, ingetrokken foto-downloads en behoud van geldige downloads bij ongewijzigde
+albumverversing. Netwerkantwoorden zijn fixtures, geen echte integratieaccounts.
+
+Gevonden en opgelost tijdens verificatie:
+- De interactieve klok kon op tabletbreedtes de knop Boodschappen bedekken. De navigatie
+  krijgt daar een eigen rij; klok en hoofdnavigatie zijn samen getest op 768, 1024 en 1280 pixels.
+- De routinevieringstest kon twee stappen opslaan voordat de eerste opslag was bevestigd.
+  De test wacht nu expliciet op de bevestigde eerste stap en controleert nog steeds alle tien
+  vieringsvarianten. Na een eerdere timingfout is de volledige matrix opnieuw groen gedraaid.
+- De aanvankelijk gekozen JavaScript-formatter wijzigde een genest HTML-template. De wijziging
+  is teruggedraaid en JavaScript gebruikt nu vastgepinde Prettier. Een structurele vergelijking
+  bevestigde daarna behoud van alle templates en gebruikerslogica.
+
+De browsertests starten een echte tijdelijke HTTP-server met expliciete configuratie en lezen
+geen productie-`.env`. Ze testen onder meer agenda/taken/routines, boodschappen, beloningen,
+instellingen, invoerbehoud, conflicten, foto’s, de klokpopup en de nieuwe dialoogbediening.
+
+Grenzen: Firefox, fysieke apparaten, Docker/architectuurbuilds en echte CalDAV/Immich/HA-services
+zijn in deze ronde niet opnieuw gevalideerd. De bestaande handmatige acceptatie hieronder wordt
+hiermee niet vervangen. CI is bijgewerkt maar niet op GitHub uitgevoerd. Afhankelijkheden geven
+nog de bestaande waarschuwingen over FastAPI/Starlette-TestClient en een pytest-Playwright-fixture;
+de uitgevoerde tests slagen. De Node-modulecontrole gebruikt de expliciete experimentele VM-vlag.
+
+Zie [architectuur en onderhoud](ARCHITECTURE.md) voor modulegrenzen, transactie- en lockafspraken,
+en [testinstructies](TESTING.md) voor het opnieuw uitvoeren van de controles.
+
+
 Gecontroleerd op 30 oktober 2026. Dit document onderscheidt implementatie van daadwerkelijke acceptatie. De aangeleverde requirements blijven het doel; 0.1.0 is nog geen volledig afgetekende P0-release.
 
 ## Handmatige integratievalidatie — 31 oktober 2026

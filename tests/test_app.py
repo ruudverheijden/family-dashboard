@@ -4,7 +4,6 @@ import json
 import os
 import sqlite3
 import stat
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -13,127 +12,162 @@ from zoneinfo import ZoneInfo
 import pytest
 from fastapi import HTTPException, Request, Response
 from fastapi.testclient import TestClient
-from app import backup, db, integrations, main
 
-HEAD = {'X-Family-Request': '1'}
-SYNC_CALENDARS = integrations.sync_calendars
-SYNC_PHOTOS = integrations.sync_photos
+from app import auth, backup, db, security
+from app.application import create_app
+from app.config import AppConfig, load_environment
+from app.integrations import caldav, immich
+from app.schemas import Login
+
+HEAD = {"X-Family-Request": "1"}
+
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(db, 'DATA', tmp_path / 'data')
-    monkeypatch.setattr(integrations, 'CACHE', tmp_path / 'cache')
-    monkeypatch.setattr(integrations, 'assets', {})
-    monkeypatch.setattr(integrations, 'sync_calendars', lambda: None)
-    monkeypatch.setattr(integrations, 'sync_photos', lambda: None)
-    main.sessions.clear()
-    with main.login_lock:
-        main.attempts.clear()
-    main.sessions['test-admin'] = 10**12
-    with TestClient(main.app, headers=HEAD) as c:
-        with db.connect() as connection:
-            connection.execute(
-                'UPDATE login_limiter SET tokens=?,updated_at=? WHERE id=1',
-                (main.LOGIN_BURST, time.time()),
-            )
-        c.cookies.set('family_admin', 'test-admin')
+    # Legacy DB assertions use this helper path; the app receives explicit configuration.
+    monkeypatch.setattr(db, "DATA", tmp_path / "data")
+    config = AppConfig(
+        tmp_path / "data", tmp_path / "cache", "fictional-test-password", background_enabled=False
+    )
+    with TestClient(create_app(config), headers=HEAD) as c:
+        c.app.state.runtime.auth.sessions["test-admin"] = 10**12
+        c.cookies.set("family_admin", "test-admin")
         yield c
 
-def create(c, kind, body, id=None, version=0, request_id=None, action='save'):
+
+def create(c, kind, body, id=None, version=0, request_id=None, action="save"):
     id = id or str(uuid.uuid4())
-    result = c.post('/api/entities/' + kind, json={'request_id': request_id or str(uuid.uuid4()), 'id': id, 'version': version, 'body': body, 'action': action})
+    result = c.post(
+        "/api/entities/" + kind,
+        json={
+            "request_id": request_id or str(uuid.uuid4()),
+            "id": id,
+            "version": version,
+            "body": body,
+            "action": action,
+        },
+    )
     return id, result
+
 
 def test_calendar_sync_is_limited_to_three_minutes(monkeypatch):
     now = [1000]
     calls = []
-    monkeypatch.setattr(integrations, '_last_calendar_sync', None)
-    monkeypatch.setattr(integrations, '_sync_calendars', lambda: calls.append(now[0]))
-    monkeypatch.setattr(integrations.time, 'monotonic', lambda: now[0])
-
-    integrations.sync_calendars()
-    now[0] += integrations.CALENDAR_SYNC_INTERVAL - 1
-    integrations.sync_calendars()
+    sync = caldav.CalendarSync(None)
+    monkeypatch.setattr(sync, "fetch_and_publish", lambda: calls.append(now[0]))
+    monkeypatch.setattr(caldav.time, "monotonic", lambda: now[0])
+    sync.sync()
+    now[0] += caldav.CALENDAR_SYNC_INTERVAL - 1
+    sync.sync()
     assert calls == [1000]
-
     now[0] += 1
-    integrations.sync_calendars()
-    assert calls == [1000, 1000 + integrations.CALENDAR_SYNC_INTERVAL]
+    sync.sync()
+    assert calls == [1000, 1000 + caldav.CALENDAR_SYNC_INTERVAL]
 
-def setup_task(c, mode='individual', kind='tasks', members=1):
-    people = [create(c, 'members', {'name': f'Persoon {i}', 'color': '#aa7755'})[0] for i in range(members)]
-    today = c.get('/api/state').json()['day']
-    body = {'title': 'Testtaak', 'icon': '✓', 'date': today, 'repeat': 'daily', 'mode': mode, 'members': people, 'weekdays': list(range(7)), 'points': 5}
-    if kind == 'routines':
-        body.update(steps=[{'text': 'Stap één', 'icon': '✓'}, {'text': 'Stap twee', 'icon': '☀'}], start_time='07:00', end_time='09:00')
+
+def setup_task(c, mode="individual", kind="tasks", members=1):
+    people = [
+        create(c, "members", {"name": f"Persoon {i}", "color": "#aa7755"})[0]
+        for i in range(members)
+    ]
+    today = c.get("/api/state").json()["day"]
+    body = {
+        "title": "Testtaak",
+        "icon": "✓",
+        "date": today,
+        "repeat": "daily",
+        "mode": mode,
+        "members": people,
+        "weekdays": list(range(7)),
+        "points": 5,
+    }
+    if kind == "routines":
+        body.update(
+            steps=[{"text": "Stap één", "icon": "✓"}, {"text": "Stap twee", "icon": "☀"}],
+            start_time="07:00",
+            end_time="09:00",
+        )
     id, result = create(c, kind, body)
     assert result.status_code == 200, result.text
     return id, body, today
 
+
 def test_admin_and_secret_isolation(client):
-    cfg = client.get('/api/admin/settings').json()
-    cfg.update(immich_url='http://immich.example.org', immich_key='TOPSECRET')
-    assert client.post('/api/admin/settings', json=cfg).status_code == 200
-    assert 'TOPSECRET' not in client.get('/api/state').text
-    assert 'TOPSECRET' not in client.get('/api/admin/settings').text
+    cfg = client.get("/api/admin/settings").json()
+    cfg.update(immich_url="http://immich.example.org", immich_key="TOPSECRET")
+    assert client.post("/api/admin/settings", json=cfg).status_code == 200
+    assert "TOPSECRET" not in client.get("/api/state").text
+    assert "TOPSECRET" not in client.get("/api/admin/settings").text
     client.cookies.clear()
-    assert client.get('/api/admin/settings').status_code == 401
-    assert create(client, 'members', {'name':'No', 'color':'#ffffff'})[1].status_code == 401
-    assert client.post('/api/admin/sync').status_code == 401
+    assert client.get("/api/admin/settings").status_code == 401
+    assert create(client, "members", {"name": "No", "color": "#ffffff"})[1].status_code == 401
+    assert client.post("/api/admin/sync").status_code == 401
+
 
 def test_branding_settings_are_saved_and_publicly_served(client):
-    cfg = client.get('/api/admin/settings').json()
-    assert cfg['brand_title'] == 'samen'
-    assert cfg['brand_subtitle'] == 'een plek voor ons allemaal'
-    assert cfg['brand_image'] == ''
+    cfg = client.get("/api/admin/settings").json()
+    assert cfg["brand_title"] == "samen"
+    assert cfg["brand_subtitle"] == "een plek voor ons allemaal"
+    assert cfg["brand_image"] == ""
     cfg.update(
-        brand_title='Familie Jansen',
-        brand_subtitle='Samen thuis',
-        brand_image='data:image/jpeg;base64,/9j/',
+        brand_title="Familie Jansen",
+        brand_subtitle="Samen thuis",
+        brand_image="data:image/jpeg;base64,/9j/",
     )
-    assert client.post('/api/admin/settings', json=cfg).status_code == 200
+    assert client.post("/api/admin/settings", json=cfg).status_code == 200
 
-    state = client.get('/api/state').json()
-    assert state['config']['brand_title'] == 'Familie Jansen'
-    assert state['config']['brand_subtitle'] == 'Samen thuis'
-    assert state['config']['brand_image'] is True
+    state = client.get("/api/state").json()
+    assert state["config"]["brand_title"] == "Familie Jansen"
+    assert state["config"]["brand_subtitle"] == "Samen thuis"
+    assert state["config"]["brand_image"] is True
     image = client.get(f"/brand-image/{state['config']['brand_version']}")
     assert image.status_code == 200
-    assert image.headers['content-type'] == 'image/jpeg'
-    assert image.content == b'\xff\xd8\xff'
-    assert client.get('/brand-image/0').status_code == 404
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.content == b"\xff\xd8\xff"
+    assert client.get("/brand-image/0").status_code == 404
 
-@pytest.mark.parametrize(('field', 'value'), [
-    ('brand_title', 'x' * 41),
-    ('brand_subtitle', 'x' * 81),
-    ('brand_image', 'data:image/svg+xml;base64,PHN2Zz4='),
-    ('brand_image', 'data:image/jpeg;base64,dGVzdA=='),
-])
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("brand_title", "x" * 41),
+        ("brand_subtitle", "x" * 81),
+        ("brand_image", "data:image/svg+xml;base64,PHN2Zz4="),
+        ("brand_image", "data:image/jpeg;base64,dGVzdA=="),
+    ],
+)
 def test_invalid_branding_settings_are_rejected(client, field, value):
-    cfg = client.get('/api/admin/settings').json()
+    cfg = client.get("/api/admin/settings").json()
     cfg[field] = value
-    assert client.post('/api/admin/settings', json=cfg).status_code == 422
+    assert client.post("/api/admin/settings", json=cfg).status_code == 422
+
 
 def test_cross_origin_rejected(client):
-    assert client.post('/api/logout', headers={'Origin':'https://evil.example'}).status_code == 403
-    with TestClient(main.app) as c:
-        assert c.post('/api/logout').status_code == 403
+    assert client.post("/api/logout", headers={"Origin": "https://evil.example"}).status_code == 403
+    with TestClient(client.app) as c:
+        assert c.post("/api/logout").status_code == 403
+
 
 def test_request_body_limit_rejects_large_content_length(client):
     response = client.post(
-        '/api/logout',
-        content=b'x' * (main.MAX_REQUEST_BODY_BYTES + 1),
-        headers={**HEAD, 'Content-Type': 'application/json'},
+        "/api/logout",
+        content=b"x" * (security.MAX_REQUEST_BODY_BYTES + 1),
+        headers={**HEAD, "Content-Type": "application/json"},
     )
     assert response.status_code == 413
-    assert response.json() == {'detail': 'Verzoek is te groot.'}
+    assert response.json() == {"detail": "Verzoek is te groot."}
+
 
 def test_request_body_limit_rejects_oversized_stream_without_content_length():
-    middleware = main.RequestBodyLimitMiddleware(lambda *args: pytest.fail('Oversized body reached the application'), 4)
-    messages = iter([
-        {'type': 'http.request', 'body': b'123', 'more_body': True},
-        {'type': 'http.request', 'body': b'456', 'more_body': False},
-    ])
+    middleware = security.RequestBodyLimitMiddleware(
+        lambda *args: pytest.fail("Oversized body reached the application"), 4
+    )
+    messages = iter(
+        [
+            {"type": "http.request", "body": b"123", "more_body": True},
+            {"type": "http.request", "body": b"456", "more_body": False},
+        ]
+    )
     sent = []
 
     async def receive():
@@ -142,364 +176,515 @@ def test_request_body_limit_rejects_oversized_stream_without_content_length():
     async def send(message):
         sent.append(message)
 
-    asyncio.run(middleware(
-        {'type': 'http', 'method': 'POST', 'path': '/api/login', 'headers': []},
-        receive,
-        send,
-    ))
-    assert sent[0]['status'] == 413
+    asyncio.run(
+        middleware(
+            {"type": "http", "method": "POST", "path": "/api/login", "headers": []},
+            receive,
+            send,
+        )
+    )
+    assert sent[0]["status"] == 413
+
 
 def test_login_rate_limit_is_shared_across_ip_addresses(client, monkeypatch):
-    monkeypatch.setattr(main, 'ADMIN_PASSWORD', 'fictional-test-password')
-    monkeypatch.setattr(
-        main,
-        'ADMIN_HASH',
-        hashlib.scrypt('fictional-test-password'.encode(), salt=main.SALT, n=16384, r=8, p=1),
-    )
-    for index in range(main.LOGIN_BURST):
-        request = Request({
-            'type': 'http',
-            'http_version': '1.1',
-            'method': 'POST',
-            'scheme': 'http',
-            'path': '/api/login',
-            'raw_path': b'/api/login',
-            'query_string': b'',
-            'headers': [],
-            'client': (f'192.0.2.{index + 1}', 1234),
-            'server': ('testserver', 80),
-        })
+    authentication = client.app.state.runtime.auth
+    for index in range(auth.LOGIN_BURST):
+        request = Request(
+            {
+                "type": "http",
+                "http_version": "1.1",
+                "method": "POST",
+                "scheme": "http",
+                "path": "/api/login",
+                "raw_path": b"/api/login",
+                "query_string": b"",
+                "headers": [],
+                "client": (f"192.0.2.{index + 1}", 1234),
+                "server": ("testserver", 80),
+            }
+        )
         with pytest.raises(HTTPException) as error:
-            main.login(main.Login(password='incorrect'), request, Response())
+            authentication.login(Login(password="incorrect"), request, Response())
         assert error.value.status_code == 401
 
     with db.connect() as connection:
-            assert connection.execute('SELECT tokens FROM login_limiter WHERE id=1').fetchone()[0] < 1
-    with main.login_lock:
-        main.attempts.clear()
+        assert connection.execute("SELECT tokens FROM login_limiter WHERE id=1").fetchone()[0] < 1
+    with authentication.login_lock:
+        authentication.attempts.clear()
 
-    request = Request({
-        'type': 'http',
-        'http_version': '1.1',
-        'method': 'POST',
-        'scheme': 'http',
-        'path': '/api/login',
-        'raw_path': b'/api/login',
-        'query_string': b'',
-        'headers': [],
-        'client': ('192.0.2.99', 1234),
-        'server': ('testserver', 80),
-    })
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/login",
+            "raw_path": b"/api/login",
+            "query_string": b"",
+            "headers": [],
+            "client": ("192.0.2.99", 1234),
+            "server": ("testserver", 80),
+        }
+    )
     with pytest.raises(HTTPException) as error:
-        main.login(main.Login(password='incorrect'), request, Response())
+        authentication.login(Login(password="incorrect"), request, Response())
     assert error.value.status_code == 429
-    assert error.value.headers['Retry-After']
+    assert error.value.headers["Retry-After"]
+
 
 def test_backup_is_created_with_private_permissions(client, tmp_path):
-    destination = tmp_path / 'family-backup.db'
-    backup.create_backup(destination, db.DATA / 'family.db')
+    destination = tmp_path / "family-backup.db"
+    backup.create_backup(destination, db.DATA / "family.db")
     assert stat.S_IMODE(destination.stat().st_mode) == 0o600
     with sqlite3.connect(destination) as connection:
-        assert connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     with pytest.raises(FileExistsError):
-        backup.create_backup(destination, db.DATA / 'family.db')
+        backup.create_backup(destination, db.DATA / "family.db")
+
 
 def test_environment_loader_reads_dotenv_without_overriding_environment(tmp_path, monkeypatch):
-    env_file=tmp_path/'.env'
-    env_file.write_text('ADMIN_PASSWORD=fixture-password\n')
-    monkeypatch.delenv('ADMIN_PASSWORD',raising=False)
-    main.load_environment(env_file)
-    assert os.environ['ADMIN_PASSWORD']=='fixture-password'
-    monkeypatch.setenv('ADMIN_PASSWORD','already-set')
-    main.load_environment(env_file)
-    assert os.environ['ADMIN_PASSWORD']=='already-set'
+    env_file = tmp_path / ".env"
+    env_file.write_text("ADMIN_PASSWORD=fixture-password\n")
+    monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+    load_environment(env_file)
+    assert os.environ["ADMIN_PASSWORD"] == "fixture-password"
+    monkeypatch.setenv("ADMIN_PASSWORD", "already-set")
+    load_environment(env_file)
+    assert os.environ["ADMIN_PASSWORD"] == "already-set"
+
 
 def test_groceries_idempotency_conflict_and_restore(client):
     rid = str(uuid.uuid4())
-    id, r = create(client, 'groceries', {'name':'Appels'}, request_id=rid)
+    id, r = create(client, "groceries", {"name": "Appels"}, request_id=rid)
     assert r.status_code == 200
-    assert create(client, 'groceries', {'name':'Appels'}, id=id, request_id=rid)[1].status_code == 200
-    assert len(client.get('/api/state').json()['groceries']) == 1
-    assert create(client, 'groceries', {'name':'Peren'}, id=id, request_id=rid)[1].status_code == 409
-    assert create(client, 'groceries', {'name':'Appels', 'done':True}, id=id, version=1)[1].status_code == 200
-    assert create(client, 'groceries', {'name':'Anders'}, id=id, version=1)[1].status_code == 409
-    assert create(client, 'groceries', {'name':'Appels', 'done':False}, id=id, version=2)[1].status_code == 200
-    assert client.get('/api/state').json()['groceries'][0]['done'] is False
+    assert (
+        create(client, "groceries", {"name": "Appels"}, id=id, request_id=rid)[1].status_code == 200
+    )
+    assert len(client.get("/api/state").json()["groceries"]) == 1
+    assert (
+        create(client, "groceries", {"name": "Peren"}, id=id, request_id=rid)[1].status_code == 409
+    )
+    assert (
+        create(client, "groceries", {"name": "Appels", "done": True}, id=id, version=1)[
+            1
+        ].status_code
+        == 200
+    )
+    assert create(client, "groceries", {"name": "Anders"}, id=id, version=1)[1].status_code == 409
+    assert (
+        create(client, "groceries", {"name": "Appels", "done": False}, id=id, version=2)[
+            1
+        ].status_code
+        == 200
+    )
+    assert client.get("/api/state").json()["groceries"][0]["done"] is False
+
 
 def test_simultaneous_task_completion_one_history_entry(client):
-    setup_task(client, mode='shared', members=2)
-    run = client.get('/api/state').json()['runs'][0]
+    setup_task(client, mode="shared", members=2)
+    run = client.get("/api/state").json()["runs"][0]
+
     def complete(_):
-        return create(client,'runs',{'done':[0]},id=run['id'],version=1)[1].status_code
+        return create(client, "runs", {"done": [0]}, id=run["id"], version=1)[1].status_code
+
     with ThreadPoolExecutor(max_workers=2) as pool:
-        assert list(pool.map(complete, range(2))) == [200,200]
-    runs = client.get('/api/state').json()['runs']
-    assert len(runs) == 1 and runs[0]['done'] == [0] and runs[0]['version'] == 2
-    history = client.get('/api/history').json()
-    assert len([h for h in history if h['kind']=='runs']) == 1
+        assert list(pool.map(complete, range(2))) == [200, 200]
+    runs = client.get("/api/state").json()["runs"]
+    assert len(runs) == 1 and runs[0]["done"] == [0] and runs[0]["version"] == 2
+    history = client.get("/api/history").json()
+    assert len([h for h in history if h["kind"] == "runs"]) == 1
+
 
 def test_task_points_are_idempotent_and_undo_creates_a_reversal(client):
     task_id, _, _ = setup_task(client)
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = next(r for r in state['runs'] if r['template_id'] == task_id)
-    payload = {'done': [0]}
-    first = create(client, 'runs', payload, id=run['id'], version=run['version'])[1]
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = next(r for r in state["runs"] if r["template_id"] == task_id)
+    payload = {"done": [0]}
+    first = create(client, "runs", payload, id=run["id"], version=run["version"])[1]
     assert first.status_code == 200
-    assert client.get('/api/state').json()['balances'][member_id] == {'balance': 5, 'reserved': 0, 'available': 5}
+    assert client.get("/api/state").json()["balances"][member_id] == {
+        "balance": 5,
+        "reserved": 0,
+        "available": 5,
+    }
 
-    duplicate = create(client, 'runs', payload, id=run['id'], version=run['version'])[1]
+    duplicate = create(client, "runs", payload, id=run["id"], version=run["version"])[1]
     assert duplicate.status_code == 200
     with db.connect() as connection:
-        assert connection.execute('SELECT COUNT(*) FROM point_transactions').fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM point_transactions").fetchone()[0] == 1
 
-    updated = next(r for r in client.get('/api/state').json()['runs'] if r['id'] == run['id'])
-    assert create(client, 'runs', {'done': []}, id=run['id'], version=updated['version'])[1].status_code == 200
-    state = client.get('/api/state').json()
-    assert state['balances'][member_id]['balance'] == 0
-    assert sorted(t['amount'] for t in state['point_transactions']) == [-5, 5]
+    updated = next(r for r in client.get("/api/state").json()["runs"] if r["id"] == run["id"])
+    assert (
+        create(client, "runs", {"done": []}, id=run["id"], version=updated["version"])[
+            1
+        ].status_code
+        == 200
+    )
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id]["balance"] == 0
+    assert sorted(t["amount"] for t in state["point_transactions"]) == [-5, 5]
 
-    reopened = next(r for r in state['runs'] if r['id'] == run['id'])
-    assert create(client, 'runs', payload, id=run['id'], version=reopened['version'])[1].status_code == 200
-    assert client.get('/api/state').json()['balances'][member_id]['balance'] == 5
+    reopened = next(r for r in state["runs"] if r["id"] == run["id"])
+    assert (
+        create(client, "runs", payload, id=run["id"], version=reopened["version"])[1].status_code
+        == 200
+    )
+    assert client.get("/api/state").json()["balances"][member_id]["balance"] == 5
+
 
 def test_shared_task_awards_each_assigned_member_once(client):
-    setup_task(client, mode='shared', members=2)
-    state = client.get('/api/state').json()
-    run = state['runs'][0]
-    assert run['member'] == 'shared'
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    state = client.get('/api/state').json()
-    assert [state['balances'][m['id']]['balance'] for m in state['members']] == [5, 5]
-    assert len([t for t in state['point_transactions'] if t['reason'] == 'completion']) == 2
+    setup_task(client, mode="shared", members=2)
+    state = client.get("/api/state").json()
+    run = state["runs"][0]
+    assert run["member"] == "shared"
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    state = client.get("/api/state").json()
+    assert [state["balances"][m["id"]]["balance"] for m in state["members"]] == [5, 5]
+    assert len([t for t in state["point_transactions"] if t["reason"] == "completion"]) == 2
+
 
 def test_routine_awards_only_once_when_all_steps_are_done_and_reverses_on_undo(client):
-    setup_task(client, kind='routines')
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = state['runs'][0]
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    assert client.get('/api/state').json()['balances'][member_id]['balance'] == 0
-    run = next(r for r in client.get('/api/state').json()['runs'] if r['id'] == run['id'])
-    assert create(client, 'runs', {'done': [0, 1]}, id=run['id'], version=run['version'])[1].status_code == 200
-    state = client.get('/api/state').json()
-    assert state['balances'][member_id]['balance'] == 5
-    assert len([t for t in state['point_transactions'] if t['reason'] == 'completion']) == 1
-    run = next(r for r in state['runs'] if r['id'] == run['id'])
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    state = client.get('/api/state').json()
-    assert state['balances'][member_id]['balance'] == 0
-    assert sorted(t['amount'] for t in state['point_transactions']) == [-5, 5]
+    setup_task(client, kind="routines")
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = state["runs"][0]
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    assert client.get("/api/state").json()["balances"][member_id]["balance"] == 0
+    run = next(r for r in client.get("/api/state").json()["runs"] if r["id"] == run["id"])
+    assert (
+        create(client, "runs", {"done": [0, 1]}, id=run["id"], version=run["version"])[
+            1
+        ].status_code
+        == 200
+    )
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id]["balance"] == 5
+    assert len([t for t in state["point_transactions"] if t["reason"] == "completion"]) == 1
+    run = next(r for r in state["runs"] if r["id"] == run["id"])
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id]["balance"] == 0
+    assert sorted(t["amount"] for t in state["point_transactions"]) == [-5, 5]
+
 
 def test_reward_request_reserves_points_and_approval_debits_once(client):
     task_id, _, _ = setup_task(client)
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = next(r for r in state['runs'] if r['template_id'] == task_id)
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    reward_id, saved = create(client, 'rewards', {
-        'title': 'Extra schermtijd', 'description': 'Een half uur', 'icon': '🎮', 'price': 4,
-    })
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = next(r for r in state["runs"] if r["template_id"] == task_id)
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    reward_id, saved = create(
+        client,
+        "rewards",
+        {
+            "title": "Extra schermtijd",
+            "description": "Een half uur",
+            "icon": "🎮",
+            "price": 4,
+        },
+    )
     assert saved.status_code == 200
 
-    request_payload = {'request_id': 'reward-request-001', 'member_id': member_id, 'reward_id': reward_id}
-    requested = client.post('/api/reward-requests', json=request_payload)
+    request_payload = {
+        "request_id": "reward-request-001",
+        "member_id": member_id,
+        "reward_id": reward_id,
+    }
+    requested = client.post("/api/reward-requests", json=request_payload)
     assert requested.status_code == 200
-    repeated = client.post('/api/reward-requests', json=request_payload)
+    repeated = client.post("/api/reward-requests", json=request_payload)
     assert repeated.json() == requested.json()
-    state = client.get('/api/state').json()
-    assert state['balances'][member_id] == {'balance': 5, 'reserved': 4, 'available': 1}
-    assert len(state['reward_requests']) == 1
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id] == {"balance": 5, "reserved": 4, "available": 1}
+    assert len(state["reward_requests"]) == 1
 
-    decision_payload = {'request_id': 'reward-approve-001', 'action': 'approve'}
+    decision_payload = {"request_id": "reward-approve-001", "action": "approve"}
     path = f"/api/admin/reward-requests/{requested.json()['id']}/decision"
     approved = client.post(path, json=decision_payload)
     assert approved.status_code == 200
     assert client.post(path, json=decision_payload).json() == approved.json()
-    state = client.get('/api/state').json()
-    assert state['balances'][member_id] == {'balance': 1, 'reserved': 0, 'available': 1}
-    assert len([t for t in state['point_transactions'] if t['reason'] == 'reward-redemption']) == 1
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id] == {"balance": 1, "reserved": 0, "available": 1}
+    assert len([t for t in state["point_transactions"] if t["reason"] == "reward-redemption"]) == 1
+
 
 def test_pending_reward_requests_reserve_balance_and_rejection_releases_it(client):
     _, _, _ = setup_task(client)
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = state['runs'][0]
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    reward_id, result = create(client, 'rewards', {'title': 'Sticker', 'price': 3})
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = state["runs"][0]
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    reward_id, result = create(client, "rewards", {"title": "Sticker", "price": 3})
     assert result.status_code == 200
-    payload = {'request_id': 'reward-pending-001', 'member_id': member_id, 'reward_id': reward_id}
-    requested = client.post('/api/reward-requests', json=payload)
+    payload = {"request_id": "reward-pending-001", "member_id": member_id, "reward_id": reward_id}
+    requested = client.post("/api/reward-requests", json=payload)
     assert requested.status_code == 200
-    assert client.post('/api/reward-requests', json={**payload, 'request_id': 'reward-pending-002'}).status_code == 409
+    assert (
+        client.post(
+            "/api/reward-requests", json={**payload, "request_id": "reward-pending-002"}
+        ).status_code
+        == 409
+    )
     path = f"/api/admin/reward-requests/{requested.json()['id']}/decision"
-    rejected = client.post(path, json={'request_id': 'reward-reject-001', 'action': 'reject'})
+    rejected = client.post(path, json={"request_id": "reward-reject-001", "action": "reject"})
     assert rejected.status_code == 200
-    assert client.get('/api/state').json()['balances'][member_id] == {'balance': 5, 'reserved': 0, 'available': 5}
+    assert client.get("/api/state").json()["balances"][member_id] == {
+        "balance": 5,
+        "reserved": 0,
+        "available": 5,
+    }
+
 
 def test_concurrent_reward_requests_cannot_reserve_the_same_points_twice(client):
     _, _, _ = setup_task(client)
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = state['runs'][0]
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    reward_id, result = create(client, 'rewards', {'title': 'Kaartje', 'price': 4})
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = state["runs"][0]
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    reward_id, result = create(client, "rewards", {"title": "Kaartje", "price": 4})
     assert result.status_code == 200
 
     def request(number):
-        return client.post('/api/reward-requests', json={
-            'request_id': f'concurrent-reward-{number:02}',
-            'member_id': member_id,
-            'reward_id': reward_id,
-        }).status_code
+        return client.post(
+            "/api/reward-requests",
+            json={
+                "request_id": f"concurrent-reward-{number:02}",
+                "member_id": member_id,
+                "reward_id": reward_id,
+            },
+        ).status_code
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sorted(pool.map(request, range(2))) == [200, 409]
-    state = client.get('/api/state').json()
-    assert len(state['reward_requests']) == 1
-    assert state['balances'][member_id] == {'balance': 5, 'reserved': 4, 'available': 1}
+    state = client.get("/api/state").json()
+    assert len(state["reward_requests"]) == 1
+    assert state["balances"][member_id] == {"balance": 5, "reserved": 4, "available": 1}
+
 
 def test_reward_decisions_require_admin(client):
     _, _, _ = setup_task(client)
-    state = client.get('/api/state').json()
-    member_id = state['members'][0]['id']
-    run = state['runs'][0]
-    assert create(client, 'runs', {'done': [0]}, id=run['id'], version=run['version'])[1].status_code == 200
-    reward_id, result = create(client, 'rewards', {'title': 'Boek', 'price': 1})
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = state["runs"][0]
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    reward_id, result = create(client, "rewards", {"title": "Boek", "price": 1})
     assert result.status_code == 200
-    requested = client.post('/api/reward-requests', json={
-        'request_id': 'auth-reward-request', 'member_id': member_id, 'reward_id': reward_id,
-    })
+    requested = client.post(
+        "/api/reward-requests",
+        json={
+            "request_id": "auth-reward-request",
+            "member_id": member_id,
+            "reward_id": reward_id,
+        },
+    )
     assert requested.status_code == 200
     client.cookies.clear()
     decision = client.post(
         f"/api/admin/reward-requests/{requested.json()['id']}/decision",
-        json={'request_id': 'unauthorized-reward-decision', 'action': 'approve'},
+        json={"request_id": "unauthorized-reward-decision", "action": "approve"},
     )
     assert decision.status_code == 401
+
 
 def test_reward_catalog_is_admin_only_and_price_is_validated(client):
     client.cookies.clear()
     reward_id = str(uuid.uuid4())
-    payload = {'request_id': str(uuid.uuid4()), 'id': reward_id, 'version': 0, 'body': {'title': 'Beloning', 'price': 0}}
-    assert client.post('/api/entities/rewards', json=payload).status_code == 401
-    client.cookies.set('family_admin', 'test-admin')
-    assert client.post('/api/entities/rewards', json=payload).status_code == 422
+    payload = {
+        "request_id": str(uuid.uuid4()),
+        "id": reward_id,
+        "version": 0,
+        "body": {"title": "Beloning", "price": 0},
+    }
+    assert client.post("/api/entities/rewards", json=payload).status_code == 401
+    client.cookies.set("family_admin", "test-admin")
+    assert client.post("/api/entities/rewards", json=payload).status_code == 422
+
 
 def test_v1_database_migrates_to_reward_ledger(tmp_path, monkeypatch):
-    monkeypatch.setattr(db, 'DATA', tmp_path)
-    with sqlite3.connect(tmp_path / 'family.db') as connection:
-        connection.execute('CREATE TABLE settings (id INTEGER PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL)')
+    monkeypatch.setattr(db, "DATA", tmp_path)
+    with sqlite3.connect(tmp_path / "family.db") as connection:
         connection.execute(
-            'INSERT INTO settings VALUES (1,1,?)',
-            (json.dumps({'timezone': 'Europe/Amsterdam', 'caldav': [], 'ha_url': '', 'ha_dashboard': '/lovelace/0', 'immich_url': '', 'immich_key': '', 'albums': [], 'slide_seconds': 15}),),
+            "CREATE TABLE settings (id INTEGER PRIMARY KEY, version INTEGER NOT NULL, body TEXT NOT NULL)"
         )
-        connection.execute('PRAGMA user_version=1')
+        connection.execute(
+            "INSERT INTO settings VALUES (1,1,?)",
+            (
+                json.dumps(
+                    {
+                        "timezone": "Europe/Amsterdam",
+                        "caldav": [],
+                        "ha_url": "",
+                        "ha_dashboard": "/lovelace/0",
+                        "immich_url": "",
+                        "immich_key": "",
+                        "albums": [],
+                        "slide_seconds": 15,
+                    }
+                ),
+            ),
+        )
+        connection.execute("PRAGMA user_version=1")
     db.init()
     with db.connect() as connection:
-        assert connection.execute('PRAGMA user_version').fetchone()[0] == 2
-        assert connection.execute("SELECT name FROM sqlite_master WHERE name='point_transactions'").fetchone()
-        assert db.settings(connection)['timezone'] == 'Europe/Amsterdam'
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE name='point_transactions'"
+        ).fetchone()
+        assert db.settings(connection)["timezone"] == "Europe/Amsterdam"
+
 
 def test_individual_tasks_and_routine_new_day(client):
     setup_task(client, members=2)
-    _, _, today = setup_task(client, kind='routines', members=2)
-    runs = client.get('/api/state').json()['runs']
+    _, _, today = setup_task(client, kind="routines", members=2)
+    runs = client.get("/api/state").json()["runs"]
     assert len(runs) == 4
-    run = next(r for r in runs if r['kind']=='routines')
-    assert create(client,'runs',{'done':[0]},id=run['id'],version=1)[1].status_code == 200
-    assert next(r for r in client.get('/api/state').json()['runs'] if r['id']==run['id'])['done'] == [0]
-    tomorrow = (datetime.fromisoformat(today)+timedelta(days=1)).date().isoformat()
-    assert all(r['done'] == [] for r in client.get('/api/state',params={'day':tomorrow}).json()['runs'])
-    assert next(r for r in client.get('/api/state').json()['runs'] if r['id']==run['id'])['done'] == [0]
+    run = next(r for r in runs if r["kind"] == "routines")
+    assert create(client, "runs", {"done": [0]}, id=run["id"], version=1)[1].status_code == 200
+    assert next(r for r in client.get("/api/state").json()["runs"] if r["id"] == run["id"])[
+        "done"
+    ] == [0]
+    tomorrow = (datetime.fromisoformat(today) + timedelta(days=1)).date().isoformat()
+    assert all(
+        r["done"] == [] for r in client.get("/api/state", params={"day": tomorrow}).json()["runs"]
+    )
+    assert next(r for r in client.get("/api/state").json()["runs"] if r["id"] == run["id"])[
+        "done"
+    ] == [0]
+
 
 def test_week_state_includes_local_task_occurrences_without_caldav(client):
     _, body, today = setup_task(client)
     current = datetime.fromisoformat(today).date()
     monday = current - timedelta(days=current.weekday())
-    body['date'] = monday.isoformat()
-    task_id, saved = create(client, 'tasks', body)
+    body["date"] = monday.isoformat()
+    task_id, saved = create(client, "tasks", body)
     assert saved.status_code == 200
-    state = client.get('/api/state', params={'day': today, 'period': 'week'})
+    state = client.get("/api/state", params={"day": today, "period": "week"})
     assert state.status_code == 200
     result = state.json()
-    occurrences = [r for r in result['runs'] if r['template_id'] == task_id]
+    occurrences = [r for r in result["runs"] if r["template_id"] == task_id]
     assert len(occurrences) == 7
-    assert {r['day'] for r in occurrences} == {
+    assert {r["day"] for r in occurrences} == {
         (monday + timedelta(days=offset)).isoformat() for offset in range(7)
     }
-    assert result['events'] == []
-    assert result['config']['caldav_configured'] is False
+    assert result["events"] == []
+    assert result["config"]["caldav_configured"] is False
+
 
 def test_three_day_state_includes_today_and_two_following_days(client):
     task_id, _, today = setup_task(client)
-    state = client.get('/api/state', params={'day': today, 'period': 'three-day'})
+    state = client.get("/api/state", params={"day": today, "period": "three-day"})
     assert state.status_code == 200
-    occurrences = [run for run in state.json()['runs'] if run['template_id'] == task_id]
+    occurrences = [run for run in state.json()["runs"] if run["template_id"] == task_id]
     assert len(occurrences) == 3
-    assert {run['day'] for run in occurrences} == {
+    assert {run["day"] for run in occurrences} == {
         (date.fromisoformat(today) + timedelta(days=offset)).isoformat() for offset in range(3)
     }
 
+
 def test_state_rejects_unknown_calendar_period(client):
-    today = client.get('/api/state').json()['day']
-    assert client.get('/api/state', params={'day': today, 'period': 'month'}).status_code == 422
+    today = client.get("/api/state").json()["day"]
+    assert client.get("/api/state", params={"day": today, "period": "month"}).status_code == 422
+
 
 def test_routine_concurrent_different_steps_conflict(client):
-    setup_task(client,kind='routines')
-    run = client.get('/api/state').json()['runs'][0]
-    assert create(client,'runs',{'done':[0]},id=run['id'],version=1)[1].status_code == 200
-    assert create(client,'runs',{'done':[1]},id=run['id'],version=1)[1].status_code == 409
-    assert create(client,'runs',{'done':[0,1]},id=run['id'],version=2)[1].status_code == 200
+    setup_task(client, kind="routines")
+    run = client.get("/api/state").json()["runs"][0]
+    assert create(client, "runs", {"done": [0]}, id=run["id"], version=1)[1].status_code == 200
+    assert create(client, "runs", {"done": [1]}, id=run["id"], version=1)[1].status_code == 409
+    assert create(client, "runs", {"done": [0, 1]}, id=run["id"], version=2)[1].status_code == 200
+
 
 def test_template_edits_preserve_snapshot(client):
     id, body, today = setup_task(client)
-    old = client.get('/api/state').json()['runs'][0]
-    assert create(client,'tasks',{**body,'title':'Nieuwe titel'},id=id,version=1)[1].status_code==200
-    assert client.get('/api/state').json()['runs'][0]['body']['title'] == old['body']['title']
-    assert create(client,'tasks',{**body,'archived':True},id=id,version=2)[1].status_code==200
-    tomorrow = (datetime.fromisoformat(today)+timedelta(days=1)).date().isoformat()
-    assert not client.get('/api/state',params={'day':tomorrow}).json()['runs']
+    old = client.get("/api/state").json()["runs"][0]
+    assert (
+        create(client, "tasks", {**body, "title": "Nieuwe titel"}, id=id, version=1)[1].status_code
+        == 200
+    )
+    assert client.get("/api/state").json()["runs"][0]["body"]["title"] == old["body"]["title"]
+    assert (
+        create(client, "tasks", {**body, "archived": True}, id=id, version=2)[1].status_code == 200
+    )
+    tomorrow = (datetime.fromisoformat(today) + timedelta(days=1)).date().isoformat()
+    assert not client.get("/api/state", params={"day": tomorrow}).json()["runs"]
+
 
 def test_sqlite_backup_restore(client, tmp_path, monkeypatch):
-    create(client,'groceries',{'name':'Brood','quantity':'2 stuks'})
-    cfg=client.get('/api/admin/settings').json()
-    cfg['immich_key']='backup-secret'
-    client.post('/api/admin/settings',json=cfg)
-    restored=tmp_path/'restored'
+    create(client, "groceries", {"name": "Brood", "quantity": "2 stuks"})
+    cfg = client.get("/api/admin/settings").json()
+    cfg["immich_key"] = "backup-secret"
+    client.post("/api/admin/settings", json=cfg)
+    restored = tmp_path / "restored"
     restored.mkdir()
-    with sqlite3.connect(db.DATA/'family.db') as source, sqlite3.connect(restored/'family.db') as dest:
+    with (
+        sqlite3.connect(db.DATA / "family.db") as source,
+        sqlite3.connect(restored / "family.db") as dest,
+    ):
         source.backup(dest)
-    monkeypatch.setattr(db,'DATA',restored)
+    monkeypatch.setattr(db, "DATA", restored)
     db.init()
-    assert client.get('/api/state').json()['groceries'][0]['name']=='Brood'
+    restored_config = AppConfig(
+        restored, tmp_path / "restored-cache", "test", background_enabled=False
+    )
+    with TestClient(create_app(restored_config)) as restored_client:
+        assert restored_client.get("/api/state").json()["groceries"][0]["name"] == "Brood"
     with db.connect() as c:
-        assert db.settings(c)['immich_key']=='backup-secret'
+        assert db.settings(c)["immich_key"] == "backup-secret"
 
-def test_future_schema_refused(tmp_path,monkeypatch):
-    monkeypatch.setattr(db,'DATA',tmp_path)
-    with sqlite3.connect(tmp_path/'family.db') as c:
-        c.execute('PRAGMA user_version=999')
-    with pytest.raises(RuntimeError): db.init()
+
+def test_future_schema_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DATA", tmp_path)
+    with sqlite3.connect(tmp_path / "family.db") as c:
+        c.execute("PRAGMA user_version=999")
+    with pytest.raises(RuntimeError):
+        db.init()
+
 
 def test_photo_permission_error_is_actionable(client, monkeypatch):
     import httpx
+
     pid = str(uuid.uuid4())
-    monkeypatch.setattr(integrations, 'assets', {pid: {'id': pid}})
-    response = httpx.Response(403, request=httpx.Request('GET', 'http://immich.example.org'))
-    monkeypatch.setattr(integrations, 'immich_get', lambda *args: response)
-    monkeypatch.setattr(integrations, 'CACHE', db.DATA.parent / 'cache')
-    result = client.get('/api/photos/' + pid)
+    monkeypatch.setattr(client.app.state.runtime.photos, "assets", {pid: {"id": pid}})
+    response = httpx.Response(403, request=httpx.Request("GET", "http://immich.example.org"))
+    monkeypatch.setattr(immich, "immich_get", lambda *args: response)
+    monkeypatch.setattr(client.app.state.runtime.photos, "cache", db.DATA.parent / "cache")
+    result = client.get("/api/photos/" + pid)
     assert result.status_code == 403
-    assert 'asset.view' in result.json()['detail']
+    assert "asset.view" in result.json()["detail"]
 
 
 def test_unselected_photo_never_requested(client, monkeypatch):
-    monkeypatch.setattr(integrations,'immich_get',lambda *a:pytest.fail('Must not request arbitrary photos'))
-    assert client.get('/api/photos/unknown').status_code==404
+    monkeypatch.setattr(
+        immich, "immich_get", lambda *a: pytest.fail("Must not request arbitrary photos")
+    )
+    assert client.get("/api/photos/unknown").status_code == 404
+
 
 def test_ical_dst_exception_all_day():
-    raw='''BEGIN:VCALENDAR
+    raw = """BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Test//NL
 BEGIN:VEVENT
@@ -523,206 +708,298 @@ DTSTART;VALUE=DATE:20261025
 DTEND;VALUE=DATE:20261027
 SUMMARY:Hele dag
 END:VEVENT
-END:VCALENDAR'''
-    tz=ZoneInfo('Europe/Amsterdam')
-    events=integrations.expand_ics(raw,datetime(2026,10,23,tzinfo=tz),datetime(2026,10,28,tzinfo=tz),tz)
-    assert len(events)==3
-    assert next(e for e in events if e['title']=='Origineel')['start']=='2026-10-24T09:00:00+02:00'
-    assert next(e for e in events if e['title']=='Verplaatst')['start']=='2026-10-26T11:00:00+01:00'
-    assert next(e for e in events if e['title']=='Hele dag')['all_day'] is True
+END:VCALENDAR"""
+    tz = ZoneInfo("Europe/Amsterdam")
+    events = caldav.expand_ics(
+        raw, datetime(2026, 10, 23, tzinfo=tz), datetime(2026, 10, 28, tzinfo=tz), tz
+    )
+    assert len(events) == 3
+    assert (
+        next(e for e in events if e["title"] == "Origineel")["start"] == "2026-10-24T09:00:00+02:00"
+    )
+    assert (
+        next(e for e in events if e["title"] == "Verplaatst")["start"]
+        == "2026-10-26T11:00:00+01:00"
+    )
+    assert next(e for e in events if e["title"] == "Hele dag")["all_day"] is True
+
 
 def test_missed_days_materialized_before_template_edit(client):
     id, body, today = setup_task(client)
-    earlier=(datetime.fromisoformat(today)-timedelta(days=2)).date().isoformat()
+    earlier = (datetime.fromisoformat(today) - timedelta(days=2)).date().isoformat()
     # Simulate a template saved before a server was offline for two days.
     with db.connect() as c:
-        stored={**body,'date':earlier}
-        c.execute('UPDATE entities SET body=? WHERE id=?',(json.dumps(stored),id))
-        c.execute('DELETE FROM schedule_cursor WHERE id=?',(id,))
-    assert create(client,'tasks',{**stored,'title':'Updated'},id=id,version=1)[1].status_code==200
+        stored = {**body, "date": earlier}
+        c.execute("UPDATE entities SET body=? WHERE id=?", (json.dumps(stored), id))
+        c.execute("DELETE FROM schedule_cursor WHERE id=?", (id,))
+    assert (
+        create(client, "tasks", {**stored, "title": "Updated"}, id=id, version=1)[1].status_code
+        == 200
+    )
     with db.connect() as c:
-        runs=c.execute('SELECT * FROM runs WHERE template_id=?',(id,)).fetchall()
-        assert len(runs)==3
-        assert all(json.loads(r['body'])['title']=='Testtaak' and json.loads(r['done'])==[] for r in runs)
+        runs = c.execute("SELECT * FROM runs WHERE template_id=?", (id,)).fetchall()
+        assert len(runs) == 3
+        assert all(
+            json.loads(r["body"])["title"] == "Testtaak" and json.loads(r["done"]) == []
+            for r in runs
+        )
+
 
 def test_caldav_atomic_replacement_and_failure_keeps_cache(client, monkeypatch):
     # Use the real sync function despite the fixture disabling background network work.
     from types import SimpleNamespace
-    real = integrations
-    monkeypatch.setattr(real,'CACHE',db.DATA.parent/'cache')
+
+    real = caldav
+    synchronizer = client.app.state.runtime.calendars
     now = [1000]
-    monkeypatch.setattr(real, '_last_calendar_sync', None)
-    monkeypatch.setattr(real.time, 'monotonic', lambda: now[0])
-    account={'id':str(uuid.uuid4()),'url':'http://calendar.example.org','username':'test','password':'secret','calendars':[{'url':'http://calendar.example.org/a/','name':'Gezin','member':''}]}
+    monkeypatch.setattr(synchronizer, "last_sync", None)
+    monkeypatch.setattr(real.time, "monotonic", lambda: now[0])
+    account = {
+        "id": str(uuid.uuid4()),
+        "url": "http://calendar.example.org",
+        "username": "test",
+        "password": "secret",
+        "calendars": [{"url": "http://calendar.example.org/a/", "name": "Gezin", "member": ""}],
+    }
     with db.connect() as c:
-        cfg=db.settings(c)
-        cfg['caldav']=[account]
-        c.execute('UPDATE settings SET body=?',(json.dumps(cfg),))
-    raw='BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:demo\nDTSTART:20261030T090000Z\nDTEND:20261030T100000Z\nSUMMARY:Afspraak\nEND:VEVENT\nEND:VCALENDAR'
-    resources=[SimpleNamespace(data=raw)]
+        cfg = db.settings(c)
+        cfg["caldav"] = [account]
+        c.execute("UPDATE settings SET body=?", (json.dumps(cfg),))
+    raw = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:demo\nDTSTART:20261030T090000Z\nDTEND:20261030T100000Z\nSUMMARY:Afspraak\nEND:VEVENT\nEND:VCALENDAR"
+    resources = [SimpleNamespace(data=raw)]
+
     class Fake:
-        def __enter__(self): return self
-        def __exit__(self,*args): pass
-        def principal(self): return self
-        def calendars(self): return [self]
-        url='http://calendar.example.org/a/'
-        def search(self,**kwargs): return resources
-    monkeypatch.setattr(real,'client',lambda a:Fake())
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def principal(self):
+            return self
+
+        def calendars(self):
+            return [self]
+
+        url = "http://calendar.example.org/a/"
+
+        def search(self, **kwargs):
+            return resources
+
+    monkeypatch.setattr(real, "client", lambda a: Fake())
+
     def sync_after_interval():
         now[0] += real.CALENDAR_SYNC_INTERVAL
-        SYNC_CALENDARS()
+        synchronizer.sync()
 
-    SYNC_CALENDARS()
-    state=client.get('/api/state').json()
-    assert len(state['events'])==1
-    calendar_status=state['status']['caldav:'+account['id']]
-    assert calendar_status['calendars']==[{'name':'Gezin'}]
-    assert calendar_status['last_success']
-    resources[:]=[SimpleNamespace(data=raw.replace('Afspraak','Gewijzigd'))]
+    synchronizer.sync()
+    state = client.get("/api/state").json()
+    assert len(state["events"]) == 1
+    calendar_status = state["status"]["caldav:" + account["id"]]
+    assert calendar_status["calendars"] == [{"name": "Gezin"}]
+    assert calendar_status["last_success"]
+    resources[:] = [SimpleNamespace(data=raw.replace("Afspraak", "Gewijzigd"))]
     sync_after_interval()
-    state=client.get('/api/state').json()
-    assert state['events'][0]['title']=='Gewijzigd'
-    last_success=state['status']['caldav:'+account['id']]['last_success']
-    monkeypatch.setattr(real,'client',lambda a:(_ for _ in ()).throw(OSError('private server data')))
+    state = client.get("/api/state").json()
+    assert state["events"][0]["title"] == "Gewijzigd"
+    last_success = state["status"]["caldav:" + account["id"]]["last_success"]
+    monkeypatch.setattr(
+        real, "client", lambda a: (_ for _ in ()).throw(OSError("private server data"))
+    )
     sync_after_interval()
-    state=client.get('/api/state').json()
-    assert len(state['events'])==1 and state['status']['caldav:'+account['id']]['ok'] is False
-    assert state['status']['caldav:'+account['id']]['last_success']==last_success
-    assert state['status']['caldav:'+account['id']]['calendars']==[{'name':'Gezin'}]
-    assert 'private server data' not in json.dumps(state)
-    monkeypatch.setattr(real,'client',lambda a:Fake())
+    state = client.get("/api/state").json()
+    assert len(state["events"]) == 1 and state["status"]["caldav:" + account["id"]]["ok"] is False
+    assert state["status"]["caldav:" + account["id"]]["last_success"] == last_success
+    assert state["status"]["caldav:" + account["id"]]["calendars"] == [{"name": "Gezin"}]
+    assert "private server data" not in json.dumps(state)
+    monkeypatch.setattr(real, "client", lambda a: Fake())
     resources.clear()
     sync_after_interval()
-    assert client.get('/api/state').json()['events']==[]
+    assert client.get("/api/state").json()["events"] == []
+
 
 def test_immich_album_revocation_and_bounded_cache(client, monkeypatch):
     import httpx
-    aid=str(uuid.uuid4());pid=str(uuid.uuid4())
-    with db.connect() as c:
-        cfg=db.settings(c)
-        cfg.update(immich_url='http://immich.example.org',immich_key='secret',albums=[aid])
-        c.execute('UPDATE settings SET body=?',(json.dumps(cfg),))
-    response={'albumName':'Testalbum','assets':[{'id':pid,'type':'IMAGE'}]}
-    def fake_get(cfg,path):
-        return httpx.Response(200,json=response,request=httpx.Request('GET','http://immich.example.org'))
-    monkeypatch.setattr(integrations,'immich_get',fake_get)
-    real_sync=SYNC_PHOTOS
-    monkeypatch.setattr(integrations,'CACHE',db.DATA.parent/'cache')
-    monkeypatch.setattr(integrations,'immich_get',fake_get)
-    real_sync()
-    assert pid in integrations.assets
-    import hashlib
-    path=integrations.CACHE/hashlib.sha256(pid.encode()).hexdigest()
-    path.write_bytes(b'test-cache')
-    response['assets']=[]
-    real_sync()
-    assert pid not in integrations.assets and not path.exists()
-    assert client.get('/api/photos/'+pid).status_code==404
-    monkeypatch.setattr(integrations,'CACHE_LIMIT',5)
-    integrations.assets={'a':{},'b':{}}
-    for id in ('a','b'):
-        (integrations.CACHE/hashlib.sha256(id.encode()).hexdigest()).write_bytes(b'1234')
-    integrations.purge_cache()
-    assert sum(p.stat().st_size for p in integrations.CACHE.iterdir())<=5
 
-@pytest.mark.parametrize('denied_page', [None, 2])
+    aid = str(uuid.uuid4())
+    pid = str(uuid.uuid4())
+    with db.connect() as c:
+        cfg = db.settings(c)
+        cfg.update(immich_url="http://immich.example.org", immich_key="secret", albums=[aid])
+        c.execute("UPDATE settings SET body=?", (json.dumps(cfg),))
+    response = {"albumName": "Testalbum", "assets": [{"id": pid, "type": "IMAGE"}]}
+
+    def fake_get(cfg, path):
+        return httpx.Response(
+            200, json=response, request=httpx.Request("GET", "http://immich.example.org")
+        )
+
+    monkeypatch.setattr(immich, "immich_get", fake_get)
+    real_sync = client.app.state.runtime.photos.sync
+    monkeypatch.setattr(client.app.state.runtime.photos, "cache", db.DATA.parent / "cache")
+    monkeypatch.setattr(immich, "immich_get", fake_get)
+    real_sync()
+    assert pid in client.app.state.runtime.photos.assets
+    path = client.app.state.runtime.photos.cache / hashlib.sha256(pid.encode()).hexdigest()
+    path.write_bytes(b"test-cache")
+    response["assets"] = []
+    real_sync()
+    assert pid not in client.app.state.runtime.photos.assets and not path.exists()
+    assert client.get("/api/photos/" + pid).status_code == 404
+    monkeypatch.setattr(client.app.state.runtime.photos, "cache_limit", 5)
+    client.app.state.runtime.photos.assets = {"a": {}, "b": {}}
+    for id in ("a", "b"):
+        (
+            client.app.state.runtime.photos.cache / hashlib.sha256(id.encode()).hexdigest()
+        ).write_bytes(b"1234")
+    client.app.state.runtime.photos.purge_cache()
+    assert sum(p.stat().st_size for p in client.app.state.runtime.photos.cache.iterdir()) <= 5
+
+
+@pytest.mark.parametrize("denied_page", [None, 2])
 def test_immich_metadata_only_albums_paginate_and_fail_closed(client, monkeypatch, denied_page):
     import httpx
+
     aid, first, second = (str(uuid.uuid4()) for _ in range(3))
     with db.connect() as c:
         cfg = db.settings(c)
-        cfg.update(immich_url='http://immich.example.org', immich_key='secret', albums=[aid])
-        c.execute('UPDATE settings SET body=?', (json.dumps(cfg),))
-    request = httpx.Request('GET', cfg['immich_url'])
-    monkeypatch.setattr(integrations, 'immich_get', lambda *args: httpx.Response(
-        200, json={'albumName': 'Nieuw album', 'assetCount': 2}, request=request))
+        cfg.update(immich_url="http://immich.example.org", immich_key="secret", albums=[aid])
+        c.execute("UPDATE settings SET body=?", (json.dumps(cfg),))
+    request = httpx.Request("GET", cfg["immich_url"])
+    monkeypatch.setattr(
+        immich,
+        "immich_get",
+        lambda *args: httpx.Response(
+            200, json={"albumName": "Nieuw album", "assetCount": 2}, request=request
+        ),
+    )
     pages = []
+
     def search(url, *, headers, json, **kwargs):
-        assert url.endswith('/api/search/metadata')
-        assert json['albumIds'] == [aid] and json['type'] == 'IMAGE'
-        page = json['page']
+        assert url.endswith("/api/search/metadata")
+        assert json["albumIds"] == [aid] and json["type"] == "IMAGE"
+        page = json["page"]
         pages.append(page)
         if page == denied_page:
             return httpx.Response(403, request=request)
-        return httpx.Response(200, json={'assets': {
-            'items': [{'id': first if page == 1 else second, 'type': 'IMAGE'}],
-            'nextPage': '2' if page == 1 else None,
-        }}, request=request)
-    monkeypatch.setattr(integrations.httpx, 'post', search)
-    monkeypatch.setattr(integrations, 'CACHE', db.DATA.parent / 'cache')
-    SYNC_PHOTOS()
+        return httpx.Response(
+            200,
+            json={
+                "assets": {
+                    "items": [{"id": first if page == 1 else second, "type": "IMAGE"}],
+                    "nextPage": "2" if page == 1 else None,
+                }
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(immich.httpx, "post", search)
+    monkeypatch.setattr(client.app.state.runtime.photos, "cache", db.DATA.parent / "cache")
+    client.app.state.runtime.photos.sync()
     assert pages == [1, 2]
-    state = client.get('/api/state').json()
+    state = client.get("/api/state").json()
     if denied_page:
-        assert state['photos'] == []
-        assert state['status']['immich']['ok'] is False
-        assert 'asset.read' in state['status']['immich']['message']
+        assert state["photos"] == []
+        assert state["status"]["immich"]["ok"] is False
+        assert "asset.read" in state["status"]["immich"]["message"]
     else:
-        assert {p['id'] for p in state['photos']} == {first, second}
-        assert state['status']['immich']['ok'] is True
+        assert {p["id"] for p in state["photos"]} == {first, second}
+        assert state["status"]["immich"]["ok"] is True
 
 
 def test_untrusted_entity_ids_rejected(client):
-    assert create(client,'groceries',{'name':'Test'},id='\"><img src=x>')[1].status_code==422
+    assert create(client, "groceries", {"name": "Test"}, id='"><img src=x>')[1].status_code == 422
+
 
 def test_ha_dashboard_settings_are_saved_without_legacy_credentials(client):
-    cfg=client.get('/api/admin/settings').json()
-    assert cfg['ha_dashboard']=='/lovelace/0'
-    cfg.update(ha_url='http://ha.example.org:8123',ha_dashboard='/dashboard-family/overview',ha_token='old-secret',ha_entities=['light.kitchen'])
-    assert client.post('/api/admin/settings',json=cfg).status_code==200
-    assert client.get('/api/state').json()['config']['ha_dashboard']=='/dashboard-family/overview'
-    saved=client.get('/api/admin/settings').json()
-    assert saved['ha_dashboard']=='/dashboard-family/overview'
-    assert 'ha_token' not in saved and 'ha_entities' not in saved
+    cfg = client.get("/api/admin/settings").json()
+    assert cfg["ha_dashboard"] == "/lovelace/0"
+    cfg.update(
+        ha_url="http://ha.example.org:8123",
+        ha_dashboard="/dashboard-family/overview",
+        ha_token="old-secret",
+        ha_entities=["light.kitchen"],
+    )
+    assert client.post("/api/admin/settings", json=cfg).status_code == 200
+    assert client.get("/api/state").json()["config"]["ha_dashboard"] == "/dashboard-family/overview"
+    saved = client.get("/api/admin/settings").json()
+    assert saved["ha_dashboard"] == "/dashboard-family/overview"
+    assert "ha_token" not in saved and "ha_entities" not in saved
     with db.connect() as connection:
-        assert 'ha_token' not in db.settings(connection) and 'ha_entities' not in db.settings(connection)
-    assert client.get('/api/ha/states').status_code==404
-    assert client.post('/api/ha/control',json={'entity_id':'light.kitchen','action':'turn_on'}).status_code==404
+        assert "ha_token" not in db.settings(connection) and "ha_entities" not in db.settings(
+            connection
+        )
+    assert client.get("/api/ha/states").status_code == 404
+    assert (
+        client.post(
+            "/api/ha/control", json={"entity_id": "light.kitchen", "action": "turn_on"}
+        ).status_code
+        == 404
+    )
+
 
 def test_legacy_ha_credentials_are_removed_on_database_init(client):
     with db.connect() as connection:
-        body=json.loads(connection.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
-        body.update(ha_token='old-secret',ha_entities=['light.kitchen'])
-        connection.execute('UPDATE settings SET body=? WHERE id=1',(json.dumps(body),))
+        body = json.loads(connection.execute("SELECT body FROM settings WHERE id=1").fetchone()[0])
+        body.update(ha_token="old-secret", ha_entities=["light.kitchen"])
+        connection.execute("UPDATE settings SET body=? WHERE id=1", (json.dumps(body),))
     db.init()
     with db.connect() as connection:
-        stored=json.loads(connection.execute('SELECT body FROM settings WHERE id=1').fetchone()[0])
-    assert 'ha_token' not in stored and 'ha_entities' not in stored
+        stored = json.loads(
+            connection.execute("SELECT body FROM settings WHERE id=1").fetchone()[0]
+        )
+    assert "ha_token" not in stored and "ha_entities" not in stored
 
-@pytest.mark.parametrize('field,value', [
-    ('ha_url','http://ha.example.org/lovelace/0'),
-    ('ha_url','http://ha.example.org:invalid'),
-    ('ha_dashboard','//other.example.org/dashboard'),
-    ('ha_dashboard','/lovelace/0?token=secret'),
-    ('ha_dashboard','/../admin'),
-    ('ha_dashboard','https://other.example.org'),
-])
-def test_invalid_ha_dashboard_configuration_rejected(client,field,value):
-    cfg=client.get('/api/admin/settings').json()
-    cfg['ha_url']='http://ha.example.org:8123'
-    cfg[field]=value
-    assert client.post('/api/admin/settings',json=cfg).status_code==422
 
-@pytest.mark.parametrize('service', ['caldav', 'immich'])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("ha_url", "http://ha.example.org/lovelace/0"),
+        ("ha_url", "http://ha.example.org:invalid"),
+        ("ha_dashboard", "//other.example.org/dashboard"),
+        ("ha_dashboard", "/lovelace/0?token=secret"),
+        ("ha_dashboard", "/../admin"),
+        ("ha_dashboard", "https://other.example.org"),
+    ],
+)
+def test_invalid_ha_dashboard_configuration_rejected(client, field, value):
+    cfg = client.get("/api/admin/settings").json()
+    cfg["ha_url"] = "http://ha.example.org:8123"
+    cfg[field] = value
+    assert client.post("/api/admin/settings", json=cfg).status_code == 422
+
+
+@pytest.mark.parametrize("service", ["caldav", "immich"])
 def test_changed_endpoint_never_receives_saved_credentials(client, monkeypatch, service):
-    old, new = 'https://first.example.test', 'https://second.example.test'
-    cfg = client.get('/api/admin/settings').json()
-    account = {'id': str(uuid.uuid4()), 'username': 'test', 'url': old, 'password': 'private', 'calendars': []}
-    cfg.update(caldav=[account], immich_url=old, immich_key='private')
-    assert client.post('/api/admin/settings', json=cfg).status_code == 200
+    old, new = "https://first.example.test", "https://second.example.test"
+    cfg = client.get("/api/admin/settings").json()
+    account = {
+        "id": str(uuid.uuid4()),
+        "username": "test",
+        "url": old,
+        "password": "private",
+        "calendars": [],
+    }
+    cfg.update(caldav=[account], immich_url=old, immich_key="private")
+    assert client.post("/api/admin/settings", json=cfg).status_code == 200
 
     def unexpected(*args):
-        pytest.fail('Discovery must reject the change before making a network call')
-    monkeypatch.setattr(integrations, 'discover' if service == 'caldav' else 'albums', unexpected)
-    discover = client.post('/api/admin/discover/' + service, json={'id': account['id'], 'url': new})
+        pytest.fail("Discovery must reject the change before making a network call")
+
+    monkeypatch.setattr(
+        caldav if service == "caldav" else immich,
+        "discover" if service == "caldav" else "albums",
+        unexpected,
+    )
+    discover = client.post("/api/admin/discover/" + service, json={"id": account["id"], "url": new})
     assert discover.status_code == 422
-    cfg = client.get('/api/admin/settings').json()
-    if service == 'caldav':
-        cfg['caldav'][0]['url'] = new
+    cfg = client.get("/api/admin/settings").json()
+    if service == "caldav":
+        cfg["caldav"][0]["url"] = new
     else:
-        cfg['immich_url'] = new
-    assert client.post('/api/admin/settings', json=cfg).status_code == 422
+        cfg["immich_url"] = new
+    assert client.post("/api/admin/settings", json=cfg).status_code == 422
     with db.connect() as connection:
         current = db.settings(connection)
-        assert (current['caldav'][0]['url'], current['caldav'][0]['password']) == (old, 'private')
-        assert (current['immich_url'], current['immich_key']) == (old, 'private')
+        assert (current["caldav"][0]["url"], current["caldav"][0]["password"]) == (old, "private")
+        assert (current["immich_url"], current["immich_key"]) == (old, "private")

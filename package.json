@@ -1,0 +1,13 @@
+{
+  "name": "samen-dashboard-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write \"app/static/**/*.js\" \"tools/*.mjs\"",
+    "format:check": "prettier --check \"app/static/**/*.js\" \"tools/*.mjs\"",
+    "check:modules": "node --experimental-vm-modules tools/check_frontend.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  }
+}
