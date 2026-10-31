@@ -16,13 +16,14 @@ Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en
 - CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen privéafspraken met herhalingen, uitzonderingen en tijdzones.
 - Taken met beschrijving, datum, icoon, punten per uitvoering, dag/weekherhaling en individuele of gezamenlijke uitvoering.
 - Routines met geordende stappen, personen, weekdagen en tijdvenster. Punten worden één keer toegekend als alle stappen af zijn; voortgang blijft server-side bewaard en gemiste stappen blijven open.
+- Kindmodus voor een gedeeld scherm: persoonlijke taken, routinevoortgang en beloningen van vandaag met grote bediening. De kindmodus verbergt ouderbeheer, maar is geen beveiligingsgrens.
 - Gedeelde boodschappen met hoeveelheid, notitie, bewerken, afvinken, herstellen en opruimen.
 - Automatische verversing elke 1,5 seconde; versienummers voorkomen stil overschrijven. Dubbele verzoeken worden herkend.
 - Beveiligd beheer, server-side integratiegeheimen, historie, SQLite-back-up en healthcheck.
 - Puntensaldi en herleidbare transacties per gezinslid, beheerbare beloningen, aanvragen met gereserveerde punten en oudergoedkeuring. Een voltooiing ongedaan maken boekt de bijbehorende punten terug.
 - Home Assistant-dashboard rechtstreeks ingesloten vanuit het zelfgekozen HA-dashboardpad. Immich-fotolijst uit geselecteerde albums, pauze/vorige/volgende, voorladen, begrensde servercache en schermspecifieke voorkeuren.
 
-Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filter en geen authenticatie. Alleen een beheerder kan de beloningscatalogus beheren en aanvragen goedkeuren. Recepten en maaltijdplanning zijn niet opgenomen.
+Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filter en geen authenticatie. De kindmodus vereenvoudigt de bediening maar biedt geen toegangsbeveiliging. Alleen een beheerder kan de beloningscatalogus beheren en aanvragen goedkeuren. Recepten en maaltijdplanning zijn niet opgenomen.
 
 ## Installeren met Docker Compose
 

@@ -1359,3 +1359,75 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     expect(p.get_by_text("Geen transacties op deze datum.")).to_be_visible()
     p.get_by_role("button", name="Volgende dag").click()
     expect(p.get_by_text("Goedgekeurd", exact=True)).to_be_visible()
+
+
+def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
+    p = dashboard
+    p.set_viewport_size({"width": 390, "height": 664})
+    login(p)
+    add_member(p, "Alex")
+
+    section(p, "Taken")
+    p.get_by_role("button", name="Nieuwe taak", exact=True).click()
+    p.get_by_label("Titel", exact=True).fill("Speelgoed opruimen")
+    p.get_by_label("Alex", exact=True).check()
+    p.get_by_label("Herhaling").select_option("daily")
+    p.get_by_label("Punten bij voltooien").fill("5")
+    save(p)
+
+    section(p, "Routines")
+    p.get_by_role("button", name="Nieuwe routine", exact=True).click()
+    p.get_by_label("Titel", exact=True).fill("Avondroutine")
+    p.get_by_label("Alex", exact=True).check()
+    p.get_by_label("Titel stap 1").fill("Boekje lezen")
+    p.get_by_role("button", name="Stap toevoegen").click()
+    p.get_by_label("Titel stap 2").fill("Pyjama aan")
+    save(p)
+
+    section(p, "Beloningen")
+    p.locator("[data-member]").filter(has_text="Alex").click()
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    p.get_by_role("button", name="Beloning toevoegen").click()
+    p.get_by_label("Naam", exact=True).fill("Film kiezen")
+    p.get_by_label("Prijs in punten").fill("5")
+    save(p)
+
+    section(p, "Agenda")
+    p.get_by_role("button", name="Kindmodus", exact=True).click()
+    expect(p.get_by_role("heading", name="Wie ben jij?")).to_be_visible()
+    expect(p.locator(".main-tabs")).to_be_hidden()
+    expect(p.locator("#admin")).to_be_hidden()
+    p.locator("[data-child-member]").filter(has_text="Alex").click()
+
+    expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
+    assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    for button in p.locator("button:visible").all():
+        bounds = button.bounding_box()
+        assert bounds["width"] >= 48 and bounds["height"] >= 48, bounds
+    expect(p.get_by_role("heading", name="Mijn taken")).to_be_visible()
+    expect(p.get_by_role("heading", name="Mijn routines")).to_be_visible()
+    expect(p.get_by_role("button", name="Voltooi Speelgoed opruimen")).to_be_visible()
+    expect(p.get_by_role("button", name="Nog 5 nodig")).to_be_disabled()
+    expect(p.get_by_text("Nog 5 sterren voor Film kiezen")).to_be_visible()
+
+    p.get_by_role("button", name="Voltooi Speelgoed opruimen").click()
+    task = p.locator(".child-task").filter(has_text="Speelgoed opruimen")
+    expect(task).to_contain_text("Klaar!")
+    expect(task.get_by_role("button", name="Heropen Speelgoed opruimen")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(p.get_by_role("button", name="Vraag aan")).to_be_enabled()
+
+    p.get_by_role("button", name="Voltooi Boekje lezen voor Alex").click()
+    expect(p.get_by_text("1 van 2 klaar")).to_be_visible()
+
+    p.get_by_role("button", name="Vraag aan").click()
+    expect(p.get_by_role("button", name="Aangevraagd")).to_be_disabled()
+    expect(p.locator(".child-request-status")).to_contain_text(
+        "Je aanvraag wacht op een volwassene."
+    )
+
+    p.get_by_role("button", name="Naar ouderweergave").click()
+    expect(p.locator(".subnav")).to_be_visible()
+    expect(p.locator(".family-filter")).to_be_visible()
+    expect(p.locator("[data-member][aria-pressed='true']")).to_contain_text("Alex")

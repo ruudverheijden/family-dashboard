@@ -20,6 +20,8 @@ export const state = {
   agendaScrollKey: '',
   agendaScrollTop: null,
   agendaTasksAwaitingHide: new Set(),
+  childMode: false,
+  childModeReturn: null,
   screen: {},
   darkMode: false
 };

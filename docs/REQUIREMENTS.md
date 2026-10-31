@@ -30,7 +30,7 @@ Status betekent:
 - **Open**: implementatie, besluit of acceptatie staat nog open.
 - **Buiten scope**: bewust geen functionaliteit of opleveractie voor deze versie.
 
-**Statussamenvatting op 31 oktober 2026:** van de 95 requirement-ID’s zijn er 70 gereed, 19 deels gereed (verdere acceptatie open) en 6 bewust uitgesteld als P1. De eigenaar heeft de agenda-integratie, Immich en Home Assistant handmatig gevalideerd. Er is geen P0-ID waarvan de kernfunctionaliteit nog gebouwd moet worden; resterende P0-TODO’s zijn aanvullende randgevallen en technische acceptatie.
+**Statussamenvatting op 31 oktober 2026:** van de 96 requirement-ID’s zijn er 71 gereed, 19 deels gereed (verdere acceptatie open) en 6 bewust uitgesteld als P1. De eigenaar heeft de agenda-integratie, Immich en Home Assistant handmatig gevalideerd. Er is geen P0-ID waarvan de kernfunctionaliteit nog gebouwd moet worden; resterende P0-TODO’s zijn aanvullende randgevallen en technische acceptatie.
 
 ## 3. Navigatie en responsive interface
 
@@ -47,6 +47,7 @@ Status betekent:
 | UI-09 | P0 | Bij wisselen van tabblad relevante toestand behouden, zoals de geselecteerde kalenderdatum. | Gereed |
 | UI-10 | P0 | Niet-opgeslagen invoer beschermen tegen onbedoeld verlies. | Gereed |
 | UI-11 | P0 | Gezinsleden herkenbaar maken met naam en kleur; kleur mag niet het enige onderscheid zijn. | Gereed |
+| UI-12 | P0 | Een optionele kindmodus binnen de kalender toont één gekozen gezinslid alleen de taken, routines en beloningen van vandaag, met grote bediening en zichtbare voltooiing. Verberg hoofdnavigatie en ouderbeheer; herstel bij verlaten de eerdere plannerweergave. Dit is een vereenvoudigde bediening, geen beveiligingsgrens of authenticatie. | Gereed |
 
 ## 4. Gezinsprofielen en toegang
 

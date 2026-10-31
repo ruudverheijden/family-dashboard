@@ -12,6 +12,7 @@ import { homeView } from './home.js';
 import { groceriesView } from './groceries.js';
 import { stopPhotos, photosView, showPhoto } from './photos.js';
 import { icon } from './icons.js';
+import { childModeView } from './child-mode.js';
 import { requestReward, rewardsView } from './rewards.js';
 import { toast } from './dialogs.js';
 import { actions } from './actions.js';
@@ -111,11 +112,14 @@ export function render() {
     'integration-view',
     state.tab === 'home' || state.tab === 'photos'
   );
+  document.body.classList.toggle('child-mode', state.childMode);
   updateHeaderDate();
   updateBrand();
   $('#app').innerHTML =
     state.tab === 'calendar'
-      ? calendarShell()
+      ? state.childMode
+        ? childModeView()
+        : calendarShell()
       : state.tab === 'home'
         ? homeView()
         : state.tab === 'groceries'
@@ -181,6 +185,41 @@ export async function operation(fn, button) {
   }
 }
 export function bindContent() {
+  document.querySelectorAll('[data-child-mode="enter"]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        state.childModeReturn = {
+          tab: state.tab,
+          sub: state.sub,
+          member: state.member,
+          day: state.day,
+          view: state.view
+        };
+        state.childMode = true;
+        state.tab = 'calendar';
+        state.member = '';
+        state.day = today();
+        state.view = 'day';
+        refresh(true);
+      })
+  );
+  document.querySelectorAll('[data-child-mode="exit"]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        state.childMode = false;
+        if (state.childModeReturn) Object.assign(state, state.childModeReturn);
+        state.childModeReturn = null;
+        render();
+        refresh(true);
+      })
+  );
+  document.querySelectorAll('[data-child-member]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        state.member = button.dataset.childMember;
+        render();
+      })
+  );
   document
     .querySelectorAll('[data-tab]')
     .forEach((b) => (b.onclick = () => navigate(b.dataset.tab, b.dataset.sub)));

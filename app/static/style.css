@@ -2777,6 +2777,426 @@ dialog::backdrop {
   border-color: var(--glass-edge)
 }
 
+.child-mode .main-tabs,
+.child-mode #admin,
+.child-mode #clock-toggle,
+.child-mode #calendar-date,
+.child-mode #agenda-status {
+  display: none !important
+}
+
+.child-mode .topbar {
+  display: none
+}
+
+.child-mode .brand-caption {
+  display: none
+}
+
+.child-mode-page {
+  width: min(900px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 24px
+}
+
+.child-welcome {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: var(--radius);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow)
+}
+
+.child-welcome .avatar,
+.child-welcome-icon {
+  width: 64px;
+  height: 64px;
+  font-size: 30px
+}
+
+.child-welcome-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green-soft)
+}
+
+.child-welcome h1,
+.child-profile-picker h1 {
+  font-family: inherit;
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 700;
+  letter-spacing: -.5px
+}
+
+.child-welcome p,
+.child-profile-picker header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 18px
+}
+
+.child-exit {
+  margin-left: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  white-space: nowrap
+}
+
+.child-activities,
+.child-rewards {
+  display: grid;
+  gap: 14px
+}
+
+.child-activities>h2,
+.child-rewards>header h2 {
+  font-size: 25px
+}
+
+.child-task-list,
+.child-routine-list,
+.child-reward-list {
+  display: grid;
+  gap: 12px
+}
+
+.child-task,
+.child-routine-card,
+.child-rewards,
+.child-reward-card {
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow)
+}
+
+.child-task {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px
+}
+
+.child-task .checkbox,
+.child-routine-card .checkbox {
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
+  border-width: 2px
+}
+
+.child-task .checkbox svg,
+.child-routine-card .checkbox svg {
+  width: 30px;
+  height: 30px
+}
+
+.child-task-copy {
+  display: flex;
+  align-items: center;
+  gap: 14px
+}
+
+.child-task-icon {
+  font-size: 34px
+}
+
+.child-task h3,
+.child-reward-card h3 {
+  font-size: 22px
+}
+
+.child-task p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 16px
+}
+
+.child-task.done h3,
+.child-routine-card li.done .child-step-label {
+  color: var(--muted);
+  text-decoration: line-through
+}
+
+.child-done-label {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--green);
+  font-size: 16px;
+  font-weight: 700
+}
+
+.child-empty {
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: var(--glass-surface);
+  color: var(--muted);
+  font-size: 18px
+}
+
+.child-routine-card {
+  padding: 18px 22px
+}
+
+.child-routine-card>header,
+.child-rewards>header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 12px
+}
+
+.child-routine-card>header h2 {
+  font-size: 23px
+}
+
+.child-routine-card>header p,
+.child-rewards>header p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 17px
+}
+
+.child-routine-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none
+}
+
+.child-routine-card li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 68px;
+  border-top: 1px solid var(--line)
+}
+
+.child-step-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 21px
+}
+
+.child-step-label>span {
+  font-size: 28px
+}
+
+.child-progress {
+  width: min(220px, 35%);
+  height: 14px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--line)
+}
+
+.child-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width .2s ease
+}
+
+.child-rewards {
+  padding: 20px 22px
+}
+
+.child-star-balance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #9c773a;
+  font-size: 28px
+}
+
+.child-star-balance svg {
+  width: 32px;
+  height: 32px
+}
+
+.child-request-status {
+  margin-bottom: 12px;
+  color: var(--green);
+  font-size: 17px;
+  font-weight: 650
+}
+
+.child-reward-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px
+}
+
+.child-reward-icon {
+  font-size: 34px
+}
+
+.child-reward-card>div {
+  flex: 1
+}
+
+.child-reward-card p {
+  color: var(--muted);
+  font-size: 16px
+}
+
+.child-reward-card button {
+  min-height: 56px;
+  font-size: 17px
+}
+
+.child-profile-picker {
+  width: min(620px, 100%);
+  margin: min(8vh, 60px) auto;
+  text-align: center
+}
+
+.child-profile-picker header {
+  display: grid;
+  justify-items: center;
+  gap: 10px
+}
+
+.child-profile-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px
+}
+
+.child-profile-option {
+  justify-content: flex-start;
+  gap: 16px;
+  min-height: 76px;
+  padding: 12px 18px;
+  border: 1px solid var(--line);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow);
+  font-size: 22px
+}
+
+.child-profile-option .avatar {
+  width: 50px;
+  height: 50px;
+  font-size: 24px
+}
+
+.child-profile-option svg {
+  margin-left: auto
+}
+
+.child-profile-picker>.child-exit {
+  margin: 14px auto 0
+}
+
+.child-mode-start {
+  flex: 0 0 auto
+}
+
+@media(max-width:760px) {
+  .child-mode-page {
+    gap: 16px
+  }
+
+  .child-welcome {
+    gap: 10px;
+    padding: 14px
+  }
+
+  .child-welcome .avatar,
+  .child-welcome-icon {
+    width: 52px;
+    height: 52px;
+    font-size: 24px
+  }
+
+  .child-welcome h1 {
+    font-size: 25px
+  }
+
+  .child-welcome p,
+  .child-profile-picker header p {
+    font-size: 16px
+  }
+
+  .child-exit {
+    padding: 8px 10px;
+    font-size: 13px
+  }
+
+  .child-activities>h2,
+  .child-rewards>header h2 {
+    font-size: 22px
+  }
+
+  .child-task {
+    gap: 12px;
+    padding: 12px
+  }
+
+  .child-task h3,
+  .child-reward-card h3 {
+    font-size: 19px
+  }
+
+  .child-task p,
+  .child-reward-card p {
+    font-size: 15px
+  }
+
+  .child-routine-card,
+  .child-rewards {
+    padding: 14px
+  }
+
+  .child-routine-card>header,
+  .child-rewards>header {
+    gap: 10px
+  }
+
+  .child-routine-card>header h2 {
+    font-size: 20px
+  }
+
+  .child-routine-card>header p,
+  .child-rewards>header p {
+    font-size: 15px
+  }
+
+  .child-step-label {
+    gap: 8px;
+    font-size: 18px
+  }
+
+  .child-routine-card .checkbox,
+  .child-task .checkbox {
+    width: 56px;
+    height: 56px;
+    min-width: 56px
+  }
+
+  .child-reward-card {
+    flex-wrap: wrap
+  }
+
+  .child-reward-card button {
+    width: 100%
+  }
+
+  .child-mode-start {
+    width: 100%
+  }
+}
+
 :root[data-theme="dark"] .main-tabs,
 :root[data-theme="dark"] .segmented,
 :root[data-theme="dark"] .admin-tabs {
