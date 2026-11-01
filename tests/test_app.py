@@ -51,6 +51,10 @@ def create(c, kind, body, id=None, version=0, request_id=None, action="save"):
     return id, result
 
 
+def test_health_reports_release_version(client):
+    assert client.get("/api/health").json() == {"status": "ok", "version": "0.2.1"}
+
+
 def test_calendar_sync_is_limited_to_three_minutes(monkeypatch):
     now = [1000]
     calls = []

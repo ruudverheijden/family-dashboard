@@ -154,18 +154,19 @@ Tijdens implementatie vaststellen of het bestaande dashboard betrouwbaar kan wor
 |---|---|---|---|
 | DEP-01 | P0 | De volledige applicatie wordt via Docker Compose gestart, inclusief eventuele database. | Lokaal geverifieerd met lege opslag en echte Compose-services; fysieke NAS-acceptatie open |
 | DEP-02 | P0 | Geen afhankelijkheid van NAS-specifieke apps, paden, API’s of besturingssystemen. | Gereed (configuratie-/codecontrole) |
-| DEP-03 | P0 | Containerimages ondersteunen Linux amd64 en arm64; dezelfde configuratieopzet geldt voor beide. | Deels: CI-configuratie aanwezig; builds niet uitgevoerd |
-| DEP-04 | P0 | Frontend wordt vanuit de containeropstelling aangeboden; clients hebben alleen een ondersteunde browser nodig. | Deels: container-runtime niet geverifieerd |
+| DEP-03 | P0 | Containerimages ondersteunen Linux amd64 en arm64; dezelfde configuratieopzet geldt voor beide. | 0.2.0 gepubliceerd voor amd64 en arm64; beide builds, runtime en opslag lokaal getest (amd64 via emulatie); fysieke NAS-acceptatie open |
+| DEP-04 | P0 | Frontend wordt vanuit de containeropstelling aangeboden; clients hebben alleen een ondersteunde browser nodig. | Frontend via echte Compose-services geverifieerd op 0.2.0 voor amd64 en arm64; fysieke NAS-acceptatie open |
 | DEP-05 | P0 | Persistente opslag voor gegevens en configuratie; cache afzonderlijk begrensd en vervangbaar. | Containervervanging behoudt instellingen in Docker-volumes en Linux-bind-mounts; Docker-volumeherstel open |
 | DEP-06 | P0 | Configureerbare poorten, volumes, serviceadressen en tijdzone. | Gereed (configuratie aanwezig) |
 | DEP-07 | P0 | Automatisch herstarten en healthchecks. | Gereed (Compose-configuratie aanwezig) |
 | DEP-08 | P0 | Geen privileged-modus of toegang tot de Docker-socket vereist. | Gereed (Compose-configuratie gecontroleerd) |
 | DEP-09 | P0 | Installatie vereist geen ontwikkeltools op de host. | Gereed (Compose-installatie beschreven) |
 | DEP-10 | P0 | Minimale hostvereisten en ondersteunde browsers documenteren op basis van verificatie. | Deels: minimumvereisten en volledige browserondersteuning nog vaststellen |
-| DEP-11 | P0 | De vervangende containerimage bevat de zlib-fix voor CVE-2026-85091 en geen kwetsbare glibc voor CVE-2026-84243. | Lokaal geverifieerd op amd64/arm64 met Alpine/musl en zlib 1.3.2-r1; publicatie en Docker Hub-herscan open |
+| DEP-11 | P0 | De vervangende containerimage bevat de zlib-fix voor CVE-2026-85091 en geen kwetsbare glibc voor CVE-2026-84243. | 0.2.0 gepubliceerd voor amd64/arm64 met Alpine/musl en zlib 1.3.2-r1; gerichte Docker Scout-scans rechtstreeks op beide registry-images schoon |
 | DEP-12 | P0 | Eerste installatie start met lege lokale data- en cachemappen zonder vooraf gekopieerde database of handmatige eigenaarswijziging. Een aparte voorbereidingsservice stelt de maprechten in; de app draait daarna als UID/GID 10001 en behoudt bestaande gegevens. | Lokaal geverifieerd met root-owned volumes en Linux-bind-mounts op gepubliceerde 0.1.0 en beide security-images (amd64/arm64); fysieke NAS-acceptatie open |
 | DEP-13 | P0 | Eén Compose-bestand voor opdrachtregel en Portainer, met configureerbare image en optionele absolute opslagpaden; geen privéconfiguratie in gedeelde YAML. | Lokaal geverifieerd met beide opslagvormen en de gepubliceerde image; voorbeelden identiek aan compose.yaml; nieuwe versie nog niet op NAS uitgevoerd |
 | DEP-14 | P0 | De opslagvoorbereiding herstelt ook de eigenaar en rechten van teruggezette bestanden en submappen, zonder inhoud te wijzigen of symbolische links te volgen. Hardlinks naar gewone bestanden worden geweigerd. | Geautomatiseerd geverifieerd op gepubliceerde 0.1.0 met volumes en Linux-bind-mounts; inhoud en instellingen behouden, links niet gevolgd en hardlinks geweigerd; NAS-acceptatie open |
+| DEP-15 | P0 | De container bevat de python-dotenv-fix voor CVE-2026-28684; de veiligheidscontrole inspecteert alle CVE's zonder filter op ernst of CVE-ID. | python-dotenv 1.2.2 in patchrelease 0.2.1; pip 26.2.2 alleen tijdens de build, verwijderd uit de runtime; regressies en volledige scan vastgelegd in VERIFICATION.md. BusyBox CVE-2025-60876 blijft open bij Alpine |
 
 “Platformonafhankelijk” betekent ondersteuning van de gedocumenteerde Docker- en browseromgevingen, zonder productspecifieke hardwarevereisten.
 

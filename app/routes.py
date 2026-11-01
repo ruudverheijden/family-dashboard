@@ -180,4 +180,4 @@ def get_photo(asset_id: str, rt=Depends(runtime)):
 def health(rt=Depends(runtime)):
     with rt.database.connect() as db:
         db.execute("SELECT 1").fetchone()
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "0.2.1"}

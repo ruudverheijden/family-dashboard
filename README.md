@@ -2,7 +2,7 @@
 
 Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en herinneringen. Zelf te hosten, zonder abonnement, NAS-afhankelijkheid of externe frontenddiensten.
 
-**Versie 0.1.0 — eerste werkende ontwikkelversie.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
+**Versie 0.2.1 — ontwikkelversie met beveiligde containerbasis.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
 
 ![Samen gezinsdashboard](docs/screenshot.png)
 
@@ -30,10 +30,9 @@ Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filte
 De kant-en-klare image staat op [Docker Hub: ruudv/family-dashboard](https://hub.docker.com/r/ruudv/family-dashboard).
 Je hoeft de broncode niet te downloaden of zelf te bouwen.
 
-**Tag:** `ruudv/family-dashboard:0.1.0`. Deze gepubliceerde versie ondersteunt
-**Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+.
-Er is voor deze release nog geen arm64-image gepubliceerd. Gebruik de expliciete
-versietag; er wordt geen `latest`-tag aangeboden.
+**Tag:** `ruudv/family-dashboard:0.2.1`. Deze gepubliceerde versie ondersteunt
+**Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+, en **Linux arm64**.
+Gebruik de expliciete versietag; er wordt geen `latest`-tag aangeboden.
 
 ### Docker Compose
 
@@ -43,7 +42,7 @@ sla onderstaande configuratie op als `compose.yaml`:
 ```yaml
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
     user: "0:0"
     command:
       - python
@@ -81,7 +80,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.1.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
     depends_on:
       storage-init:
         condition: service_completed_successfully
@@ -227,7 +226,7 @@ Zie [Configuratie](#configuratie) voor eigen opslagpaden en schrijfrechten.
 
 ## Zelf bouwen met Docker Compose
 
-Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux amd64 of arm64 bouwen. De gepubliceerde Docker Hub-image voor 0.1.0 is alleen voor amd64; de amd64-build en containerstart zijn lokaal op een Mac via emulatie gecontroleerd. Een arm64-build en uitvoering op een fysieke NAS zijn nog niet geverifieerd. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de Docker-host nodig.
+Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux amd64 of arm64 bouwen. De Docker Hub-image voor 0.2.1 ondersteunt amd64 en arm64. Beide builds en containerstart zijn lokaal op een Mac gecontroleerd, amd64 via emulatie. Uitvoering op een fysieke NAS is nog niet geverifieerd. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de Docker-host nodig.
 
 1. Clone [de GitHub-repository](https://github.com/ruudverheijden/family-dashboard) of kopieer deze projectmap naar de server.
 2. Kopieer `.env.example` naar `.env`. Vervang `ADMIN_PASSWORD` door een eigen wachtwoord. Pas eventueel `PORT` aan.
@@ -248,7 +247,7 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | Instelling | Plaats | Betekenis |
 |---|---|---|
 | `ADMIN_PASSWORD` | `.env` | Beheerwachtwoord; wijzigen vereist containerherstart |
-| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.1.0` |
+| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.2.1` |
 | `DATA_VOLUME`, `CACHE_VOLUME` | `.env` / Portainer | Optionele absolute hostpaden; standaard benoemde Docker-volumes |
 | `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
 | `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
@@ -383,8 +382,15 @@ De Dockerfile gebruikt Python 3.12 op Alpine 3.23 met musl en installeert beschi
 Alpine-updates plus minimaal `zlib 1.3.2-r1`. Daarmee is CVE-2026-85091 verholpen;
 glibc (CVE-2026-84243) is niet aanwezig. Bestaande gepubliceerde images worden hierdoor
 niet bijgewerkt: bouw en publiceer een nieuwe versietag en vervang daarna de container
-met behoud van de volumes. De eerder gepubliceerde tag `0.1.0` bevat deze wijziging niet.
+met behoud van de volumes. De eerder gepubliceerde tag `0.1.0` bevat deze wijziging niet; gebruik `0.2.1`.
 Zie [containerverificatie](docs/VERIFICATION.md) voor de uitgevoerde scans en tests.
+
+Versie `0.2.1` werkt daarnaast `python-dotenv` bij naar `1.2.2` voor
+CVE-2026-28684. De build gebruikt `pip 26.2.2` en verwijdert pip na installatie
+uit de runtime, inclusief de daarin gebundelde dependencies. Tag `0.2.0` bevat die
+dependencyfixes nog niet. De volledige scan meldt nog CVE-2025-60876 in BusyBox wget;
+Alpine heeft daarvoor nog geen als opgelost gemarkeerde pakketversie. De applicatie
+roept wget niet aan. Zie de verificatie voor de volledige scanresultaten.
 
 Tag daarna dit nieuwe image met je Docker Hub-repository en versienummer. Publiceer geen
 eerder gebouwd image of export van een draaiende container met gezinsgegevens. De naam van

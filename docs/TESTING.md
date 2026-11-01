@@ -52,7 +52,7 @@ de database moet intact zijn en de app moet als UID/GID 10001 starten. Links naa
 bestanden en mappen buiten de opslag worden niet gevolgd; hardlinks worden geweigerd.
 
 ```sh
-CONTAINER_TEST_IMAGE=ruudv/family-dashboard:0.1.0 .venv/bin/python -m pytest tests/test_container_storage.py -q
+CONTAINER_TEST_IMAGE=ruudv/family-dashboard:0.2.1 .venv/bin/python -m pytest tests/test_container_storage.py -q
 ```
 
 Zonder `CONTAINER_TEST_IMAGE` worden deze Docker-tests overgeslagen.
@@ -67,7 +67,7 @@ RUN_CONTAINER_TESTS=1 .venv/bin/python -m pytest tests/test_container_packaging.
 ```
 
 De beveiligingsregressie controleert het daadwerkelijk gebouwde runtime-image op musl,
-afwezigheid van glibc, minimaal zlib 1.3.2-r1, UID/GID 10001, tijdzones, SQLite en
+afwezigheid van glibc, minimaal zlib 1.3.2-r1 en python-dotenv 1.2.2, UID/GID 10001, tijdzones, SQLite en
 HTTP-antwoorden. Ze gebruikt tijdelijke gegevens, geen netwerk en een alleen-lezen
 container met dezelfde beveiligingsbeperkingen als Compose. Voer haar per gebouwde
 architectuur uit (de standaard backendrun slaat haar over):
@@ -75,10 +75,14 @@ architectuur uit (de standaard backendrun slaat haar over):
 ```sh
 BUILDX_GIT_INFO=false docker build --pull -t family-dashboard:security-test .
 CONTAINER_TEST_IMAGE=family-dashboard:security-test .venv/bin/python -m pytest tests/test_container_security.py -q
-docker scout cves --exit-code --only-cve-id CVE-2026-85091,CVE-2026-84243 local://family-dashboard:security-test
+docker scout cves --exit-code local://family-dashboard:security-test
 ```
 
-De gerichte scan doet uitsluitend een uitspraak over deze twee CVE's. De containerjob
+De scan controleert alle door Scout herkende CVE's, zonder filter op CVE of ernst.
+`tests/unit/test_dotenv_security.py` simuleert de cross-device rename-fallback en
+controleert dat set/unset een symbolisch-linkdoel niet overschrijven (CVE-2026-28684).
+De bestaande configuratietest controleert dat `.env` lezen omgevingswaarden respecteert.
+De containerjob
 in CI voert de runtime-regressie uit na de Compose-build, vóór de healthcheck.
 
 De standaardrun ontdekt tests onder `tests/`, met uitzondering van `e2e/`. Alleen de nieuwe unittests draaien met `.venv/bin/python -m pytest tests/unit -q`. Deze starten geen server, openen geen database en maken geen netwerkverbinding.

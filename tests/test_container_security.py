@@ -17,6 +17,8 @@ import subprocess
 import tempfile
 import zlib
 from datetime import datetime, timedelta
+from importlib.metadata import version as package_version
+from importlib.util import find_spec
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -25,6 +27,8 @@ from app.application import create_app
 from app.config import AppConfig
 
 assert os.getuid() == os.getgid() == 10001
+assert tuple(map(int, package_version('python-dotenv').split('.'))) >= (1, 2, 2)
+assert find_spec('pip') is None
 assert list(Path('/lib').glob('ld-musl-*.so.1'))
 assert not list(Path('/lib').glob('ld-linux*'))
 packages = subprocess.check_output(['apk', '--no-network', 'info'], text=True).splitlines()

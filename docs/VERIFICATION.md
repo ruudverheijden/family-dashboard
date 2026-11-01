@@ -543,6 +543,100 @@ herstarten voert de aparte voorbereidingsservice niet opnieuw uit.
 - Geen browsertests of GitHub Actions uitgevoerd; uitsluitend opmaak gecontroleerd,
   zonder nieuwe gedragswijzigingen.
 
+
+## Release 0.2.0 naar Docker Hub — 31 oktober 2026
+
+- Versie in health-API en OCI-label naar `0.2.0` bijgewerkt; Compose, `.env.example`,
+  README, SECURITY, Docker Hub-overviewbestand en testinstructies verwijzen naar 0.2.0.
+  Bestaande historische verificatie van 0.1.0 blijft behouden.
+- Nieuwe API-regressie bevestigt het volledige healthantwoord inclusief versie.
+  Backend-/unittests: **105 geslaagd, 4 opt-in Docker-gevallen overgeslagen**.
+- Exacte releaseimages lokaal gebouwd voor linux/amd64 en linux/arm64. Per architectuur
+  beveiligings- en opslagregressies uitgevoerd: **3/3 geslaagd** (22,15 s en 15,96 s).
+  Inclusief echte Compose-start, frontend/health/state, lege root-owned opslag,
+  volumes en Linux-bind-mounts, herstel met afwijkende eigenaar en containervervanging.
+  Alleen fictieve configuratie en tijdelijke opslag; testresources opgeruimd.
+- Docker-buildcontextregressie afzonderlijk uitgevoerd: **1/1 geslaagd**.
+- Ruff lint/format, CSS-format, Prettier na `npm ci --ignore-scripts`, JavaScript-syntax,
+  modulegrenzen en `git diff --check`: geslaagd. Compose-voorbeelden in README en
+  `docs/DOCKER_HUB.md` geparseerd en exact gelijk aan `compose.yaml`.
+- `BUILDX_GIT_INFO=false docker buildx build --platform linux/amd64,linux/arm64
+  --provenance=false --sbom=false --tag ruudv/family-dashboard:0.2.0 --push .`: geslaagd.
+  Geen Git-bronmetadata/attestations gepubliceerd. Tag bestond vooraf nog niet.
+- Daarna het manifest rechtstreeks bij Docker Hub gecontroleerd:
+  - Index: `sha256:1b202a4cbddab4ae3dbbb62cfc60cbf7a9e9e4d55acd7421819d299e3c10cdc3`.
+  - amd64: `sha256:c77be2cb6b0382ee54299a774662f094c291a2a1d496ffbf22d2278bb57f700e`.
+  - arm64: `sha256:4135bdc81edfa33d0187f909647ad4973051058a97be6a7b335769da2dc85dfd`.
+  Beide platformdigests zijn exact gelijk aan de vooraf geteste lokale images.
+- Docker Scout 1.27.0 vóór én na publicatie uitgevoerd. Na publicatie met
+  `docker scout cves --platform linux/<architectuur> --exit-code --only-cve-id
+  CVE-2026-85091,CVE-2026-84243 registry://ruudv/family-dashboard:0.2.0`:
+  **beide gerichte scans schoon**, exitcode 0, elk 93 pakketten. Dit is geen volledige
+  CVE-scan of bevestiging van de asynchrone Docker Hub-webscan.
+- Niet uitgevoerd: fysieke NAS-installatie, browsermatrix, GitHub Actions of Git-push.
+  Docker Hub-overview alleen lokaal bijgewerkt; de webbeschrijving is niet aangepast.
+  Tag 0.1.0 en een eventuele latest-tag zijn niet gewijzigd.
+
+
+## python-dotenv CVE-2026-28684 / release 0.2.1 — 31 oktober 2026
+
+- [Upstream-advisory](https://github.com/theskumar/python-dotenv/security/advisories/GHSA-mf9w-mj56-hr94)
+  en [CVE-record](https://www.cve.org/CVERecord?id=CVE-2026-28684) gecontroleerd:
+  `python-dotenv 1.1.1` is kwetsbaar; de fix staat in `1.2.2`.
+  De fout betreft schrijven via set_key/unset_key. De applicatie gebruikt alleen
+  load_dotenv; geen aanroepen van set_key/unset_key, wget of subprocess in `app/` gevonden.
+- `requirements.txt` naar python-dotenv 1.2.2 bijgewerkt. Nieuwe regressie voor
+  set én unset simuleert een cross-device rename-fout met uitsluitend tijdelijke,
+  fictieve bestanden. Met 1.1.1 eerst **2/2 verwacht mislukt**: het symlinkdoel werd
+  daadwerkelijk overschreven. Na de update slagen beide gevallen.
+- Volledige scan van de eerste kandidaat toonde daarnaast zes pip-meldingen en
+  BusyBox CVE-2025-60876. Pip upgraden alleen bleek onvoldoende: daarin gebundelde
+  msgpack/urllib3/setuptools leverden extra scanmeldingen op. Definitieve Dockerfile
+  gebruikt pip 26.2.2 tijdens de build, controleert dependencies met `pip check` en
+  verwijdert pip inclusief zijn vendored dependencies vóór afronding van de image.
+  Er zijn geen applicatiedependencies voor deze pip-meldingen gewijzigd.
+- Versie in health-API/OCI-label en actuele installatievoorbeelden naar 0.2.1.
+  Containerregressie controleert nu ook minimaal python-dotenv 1.2.2 en afwezigheid
+  van pip. README en Docker Hub-overviewbestand beschrijven de resterende melding.
+- Automatisch op de host: **107 backend-/unittests geslaagd, 4 opt-in Docker-gevallen
+  overgeslagen**. In de definitieve amd64- en arm64-images dezelfde complete set:
+  elk **107 geslaagd, 4 overgeslagen**. Bekende Starlette-deprecationwaarschuwing.
+- Automatisch op de definitieve images per architectuur: beveiligings- en
+  opslagregressies elk **3/3 geslaagd** (amd64 32,21 s, arm64 16,42 s). Echte Compose-start,
+  health/frontend/state, lege root-owned opslag, volumes en Linux-bind-mounts,
+  teruggezette eigenaars/rechten en containervervanging getest. Tijdelijke data en
+  fictieve credentials gebruikt; testresources opgeruimd. amd64 via emulatie op een arm64-Mac.
+- Docker-buildcontextregressie afzonderlijk **1/1 geslaagd**.
+- Ruff lint/format, CSS-format, Prettier na `npm ci --ignore-scripts`, JavaScript-syntax,
+  modulegrenzen en `git diff --check`: geslaagd. Compose-voorbeelden in README en
+  Docker Hub-overview geparseerd en exact gelijk aan `compose.yaml`.
+- Volledige Docker Scout 1.27.0-scans van beide definitieve lokale images zonder CVE-
+  of ernstfilter: elk **0 critical, 0 high, 1 medium, 0 low**, 92 pakketten.
+  CVE-2026-28684, de eerdere zlib/glibc-meldingen en de pip-meldingen ontbreken.
+  Exitcode 2 wegens de enige resterende melding: **BusyBox 1.37.0-r30,
+  CVE-2025-60876 (wget)**. Niet onderdrukt. De
+  [Alpine-tracker](https://security.alpinelinux.org/vuln/CVE-2025-60876)
+  vermeldt geen als opgelost gemarkeerde versie. De applicatie gebruikt wget niet;
+  dit is geen bewijs dat het aanwezige pakket gepatcht is.
+- Na expliciete toestemming voor 0.2.1, publicatie met
+  `BUILDX_GIT_INFO=false docker buildx build --platform linux/amd64,linux/arm64
+  --provenance=false --sbom=false --tag ruudv/family-dashboard:0.2.1 --push .`: geslaagd.
+  0.2.1 bestond vooraf niet. Geen Git-bronmetadata/attestations gepubliceerd.
+- Het manifest daarna rechtstreeks op Docker Hub gecontroleerd:
+  - Index: `sha256:3045f95ca6307957bb01fda9d2a49666d5f78c393c0c5b9c94c6dcabcf5c40d8`.
+  - amd64: `sha256:e8d55aa8482c42abf247f2f4c21b868464ca160bba726ca63a670a3817ad0ead`.
+  - arm64: `sha256:cfbeb7055682a3eacaa16b3efe34eb0088c2485a1b311bd7270310f155a0ddbc`.
+  Platformdigests exact gelijk aan de geteste definitieve lokale images.
+- Niet uitgevoerd: browsermatrix, fysieke NAS-installatie, GitHub Actions, commit
+  of Git-push. Docker Hub-webbeschrijving alleen lokaal voorbereid. Oudere tags
+  en een eventuele latest-tag niet gewijzigd.
+- Na publicatie dezelfde volledige scans rechtstreeks tegen
+  `registry://ruudv/family-dashboard:0.2.1` uitgevoerd met respectievelijk
+  `--platform linux/amd64` en `--platform linux/arm64`: elk dezelfde 92 pakketten,
+  **0 critical, 0 high, 1 medium, 0 low**; uitsluitend BusyBox CVE-2025-60876.
+  Beide exitcode 2 wegens die open melding. Dit is Docker Scout tegen de registry,
+  geen bevestiging dat de asynchrone Docker Hub-webscan al is afgerond.
+
 ## Playwright-fouten in GitHub Actions — 31 oktober 2026
 
 - Logs en WebKit-screenshot/trace van [run 41243103441](https://github.com/ruudverheijden/family-dashboard/actions/runs/41243103441)
