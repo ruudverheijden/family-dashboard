@@ -542,3 +542,32 @@ herstarten voert de aparte voorbereidingsservice niet opnieuw uit.
 - Ruff lint/format, CSS-format en `git diff --check`: geslaagd.
 - Geen browsertests of GitHub Actions uitgevoerd; uitsluitend opmaak gecontroleerd,
   zonder nieuwe gedragswijzigingen.
+
+## Playwright-fouten in GitHub Actions — 31 oktober 2026
+
+- Logs en WebKit-screenshot/trace van [run 41243103441](https://github.com/ruudverheijden/family-dashboard/actions/runs/41243103441)
+  geïnspecteerd. Chromium slaagde; Firefox faalde op twee 48-pixelmetingen en
+  kindmodus-overflow; WebKit faalde op dezelfde kindmodus-overflow.
+- Automatisch vóór de fix onder Linux gereproduceerd: Firefox rapporteert
+  47,99997 pixels voor een 48-pixelknop. Met `fonts-dejavu-core` gebruiken Firefox
+  en WebKit DejaVu Sans als fallback; beide kindmodustests faalden dan opnieuw.
+  Het raster werd circa 375,4 pixels breed bij 351 pixels beschikbare ruimte;
+  de pagina kreeg een scrollbreedte van 401 bij een viewport van 390 pixels.
+- Fix: begrensde rasterkolom en afbreekbare mobiele welkomstbalk. De bestaande
+  minimum-aanraakmaat blijft 48 CSS-pixels; alleen de meetasserties krijgen
+  0,001 pixel afrondingstolerantie. De kindmodusflow controleert nu ook kaartgrenzen
+  en draait op 390×664, 750×342 en 768×1024.
+- Automatisch na de fix: volledige Linux-browsermatrix **225/225 geslaagd**
+  (75 per browser, 1052,14 seconden), zonder retries. Ubuntu 24.04 arm64 via
+  `mcr.microsoft.com/playwright/python:v1.64.1-noble`, Python 3.12, Playwright 1.64.1,
+  vastgepinde testdependencies en DejaVu Sans. Uitsluitend gekopieerde broncode,
+  tijdelijke databases/caches en fictieve credentials; geen `.env` of echte data.
+  De bekende pytest-playwright-deprecationwaarschuwing blijft zichtbaar.
+- Aanvullend de mobiele WebKit-kindmodus **1/1 geslaagd** en de volledige
+  paginascreenshot visueel geïnspecteerd: welkomstbalk, terugknop en alle kaarten
+  passen binnen de viewport; de taaktekst breekt af.
+- Automatisch op de host: **107 backend-/unittests geslaagd, 4 opt-in Docker-tests
+  overgeslagen**. Ruff lint/format, CSS-format, Prettier na `npm ci --ignore-scripts`,
+  JavaScript-syntax, modulegrenzen en `git diff --check`: geslaagd.
+- Niet uitgevoerd: nieuwe GitHub Actions-run op de fix, Linux amd64-browsermatrix,
+  fysieke apparaten, commit of Git-push. De tijdelijke Linux-testcontainer is opgeruimd.

@@ -24,6 +24,13 @@ Op Linux is voor installatie van browserafhankelijkheden `python -m playwright i
 
 Iedere browsertest start een echte Uvicorn-server op een vrije lokale poort met een nieuwe tijdelijke SQLite-database, een afzonderlijke fotocache en een fictief beheerwachtwoord. De tests lezen geen `.env`, gebruiken geen echte integratieaccounts en raken `data/family.db` niet aan. Twee-apparatentests gebruiken afzonderlijke browsercontexts met eigen cookies en localStorage. Playwright bewaart bij fouten screenshots en traces in `test-results/`. De GitHub-workflow voert dezelfde suite per browser uit en bewaart die bestanden 14 dagen.
 
+De kindmodusregressie controleert de volledige taak-/routine-/beloningsflow op
+390×664, 750×342 en 768×1024, inclusief horizontale overflow en kaartgrenzen.
+Linux-lettertypen horen bij deze controle: met Ubuntu's DejaVu Sans werd overflow
+zichtbaar die op macOS en met Liberation Sans niet optrad. Gebruik voor lokale
+Linux-reproductie ook `fonts-dejavu-core`. De aanraakmaat blijft minimaal 48 CSS-pixels;
+de geometrieasserties tolereren alleen 0,001 pixel meetafronding voor Firefox.
+
 ## Unittests en backendregressies
 
 `tests/test_container_storage.py` controleert echte eerste startup met lege,
@@ -86,6 +93,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 |---|---|
 | UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, iPhone 13: 390×664, 750×342, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
+| UI-12 | Kindmodus voor het gekozen kinderprofiel, taken/routines/beloningsaanvraag, verborgen ouderbediening en terugkeer naar de planner; kaartgrenzen, overflow en aanraakmaten op mobiel en tablet |
 | GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, foto uploaden/vervangen/verwijderen en behouden bij andere wijzigingen, filtering, vergrendelen en onbevoegde API-toegang |
 | UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar in een aparte rij boven de agenda op hun geplande dagen in dag-, drie-daagse en weekweergave; filter per gezinslid en direct afvinken |
 | AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont, met actuele-tijdindicator; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |

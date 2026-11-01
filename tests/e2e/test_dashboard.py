@@ -8,6 +8,9 @@ import pytest
 from conftest import add_member, grocery, login, save, section
 from playwright.sync_api import expect
 
+# Bounding rectangles can report 48 CSS pixels as 47.99997 in Firefox.
+MIN_TOUCH_TARGET = 48 - 0.001
+
 
 def test_three_day_agenda_shows_today_and_next_two_days(dashboard):
     p = dashboard
@@ -148,7 +151,10 @@ def test_navigation_responsive_UI01_09(dashboard, size):
         assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for b in p.locator("button:visible").all():
         box = b.bounding_box()
-        assert box["width"] >= 48 and box["height"] >= 48, (b.inner_text(), box)
+        assert box["width"] >= MIN_TOUCH_TARGET and box["height"] >= MIN_TOUCH_TARGET, (
+            b.inner_text(),
+            box,
+        )
 
 
 def test_shared_planner_date_and_groceries_top_level(dashboard):
@@ -1556,9 +1562,10 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     expect(p.get_by_text("Goedgekeurd", exact=True)).to_be_visible()
 
 
-def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
+@pytest.mark.parametrize("size", [(390, 664), (750, 342), (768, 1024)])
+def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     p = dashboard
-    p.set_viewport_size({"width": 390, "height": 664})
+    p.set_viewport_size(dict(zip(("width", "height"), size)))
     login(p)
     add_member(p, "Ouder", role="Ouder")
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
@@ -1614,9 +1621,12 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard):
     expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
     expect(p.locator(".child-welcome .child-exit svg")).to_have_count(1)
     assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    for card in p.locator(".child-welcome, .child-task, .child-routine-card, .child-rewards").all():
+        bounds = card.bounding_box()
+        assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= size[0], bounds
     for button in p.locator("button:visible").all():
         bounds = button.bounding_box()
-        assert bounds["width"] >= 48 and bounds["height"] >= 48, bounds
+        assert bounds["width"] >= MIN_TOUCH_TARGET and bounds["height"] >= MIN_TOUCH_TARGET, bounds
     expect(p.get_by_role("heading", name="Mijn taken")).to_be_visible()
     expect(p.get_by_role("heading", name="Mijn routines")).to_be_visible()
     expect(p.get_by_role("button", name="Voltooi Speelgoed opruimen")).to_be_visible()
