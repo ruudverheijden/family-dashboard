@@ -52,7 +52,7 @@ def create(c, kind, body, id=None, version=0, request_id=None, action="save"):
 
 
 def test_health_reports_release_version(client):
-    assert client.get("/api/health").json() == {"status": "ok", "version": "0.2.1"}
+    assert client.get("/api/health").json() == {"status": "ok", "version": "0.3.0"}
 
 
 def test_calendar_sync_is_limited_to_three_minutes(monkeypatch):
@@ -528,6 +528,110 @@ def test_reward_request_reserves_points_and_approval_debits_once(client):
     assert len([t for t in state["point_transactions"] if t["reason"] == "reward-redemption"]) == 1
 
 
+def test_admin_points_adjustment_is_idempotent_and_records_reason(client):
+    member_id, created = create(client, "members", {"name": "Alex", "color": "#aa7755"})
+    assert created.status_code == 200
+    payload = {
+        "request_id": "points-adjustment-001",
+        "member_id": member_id,
+        "amount": 3,
+        "reason": "Startcorrectie",
+    }
+
+    response = client.post("/api/admin/points/adjustments", json=payload)
+    assert response.status_code == 200
+    assert response.json()["balance"] == 3
+    assert client.post("/api/admin/points/adjustments", json=payload).json() == response.json()
+
+    state = client.get("/api/state").json()
+    assert state["balances"][member_id] == {"balance": 3, "reserved": 0, "available": 3}
+    adjustments = [
+        t for t in state["point_transactions"] if t["reason"].startswith("manual-adjustment:")
+    ]
+    assert len(adjustments) == 1
+    assert adjustments[0]["amount"] == 3
+    assert adjustments[0]["reason"] == "manual-adjustment:Startcorrectie"
+
+    changed_payload = payload | {"amount": 4}
+    assert client.post("/api/admin/points/adjustments", json=changed_payload).status_code == 409
+    assert (
+        client.post(
+            "/api/admin/points/adjustments",
+            json=payload | {"amount": 0, "request_id": "points-adjustment-002"},
+        ).status_code
+        == 422
+    )
+    without_reason = client.post(
+        "/api/admin/points/adjustments",
+        json={
+            "request_id": "points-adjustment-003",
+            "member_id": member_id,
+            "amount": 1,
+        },
+    )
+    assert without_reason.status_code == 200
+    transaction = next(
+        t
+        for t in client.get("/api/state").json()["point_transactions"]
+        if t["id"] == without_reason.json()["id"]
+    )
+    assert transaction["reason"] == "manual-adjustment"
+
+
+def test_points_adjustment_protects_reserved_reward_points(client):
+    _, _, _ = setup_task(client)
+    state = client.get("/api/state").json()
+    member_id = state["members"][0]["id"]
+    run = state["runs"][0]
+    assert (
+        create(client, "runs", {"done": [0]}, id=run["id"], version=run["version"])[1].status_code
+        == 200
+    )
+    reward_id, created = create(client, "rewards", {"title": "Sticker", "price": 4})
+    assert created.status_code == 200
+    requested = client.post(
+        "/api/reward-requests",
+        json={
+            "request_id": "reserve-for-adjustment",
+            "member_id": member_id,
+            "reward_id": reward_id,
+        },
+    )
+    assert requested.status_code == 200
+
+    route = "/api/admin/points/adjustments"
+    payload = {
+        "request_id": "points-adjustment-reserved",
+        "member_id": member_id,
+        "amount": -2,
+        "reason": "Correctie",
+    }
+    assert client.post(route, json=payload).status_code == 409
+    allowed = client.post(
+        route, json=payload | {"request_id": "points-adjustment-allowed", "amount": -1}
+    )
+    assert allowed.status_code == 200
+    assert client.get("/api/state").json()["balances"][member_id] == {
+        "balance": 4,
+        "reserved": 4,
+        "available": 0,
+    }
+
+
+def test_points_adjustment_requires_admin(client):
+    client.cookies.delete("family_admin")
+    response = client.post(
+        "/api/admin/points/adjustments",
+        json={
+            "request_id": "points-adjustment-no-admin",
+            "member_id": str(uuid.uuid4()),
+            "amount": 5,
+            "reason": "Test",
+        },
+    )
+    assert response.status_code == 401
+
+
 def test_pending_reward_requests_reserve_balance_and_rejection_releases_it(client):
     _, _, _ = setup_task(client)
     state = client.get("/api/state").json()
@@ -655,7 +759,7 @@ def test_v1_database_migrates_to_reward_ledger(tmp_path, monkeypatch):
         connection.execute("PRAGMA user_version=1")
     db.init()
     with db.connect() as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE name='point_transactions'"
         ).fetchone()
@@ -1166,3 +1270,127 @@ def test_changed_endpoint_never_receives_saved_credentials(client, monkeypatch, 
         current = db.settings(connection)
         assert (current["caldav"][0]["url"], current["caldav"][0]["password"]) == (old, "private")
         assert (current["immich_url"], current["immich_key"]) == (old, "private")
+
+
+def test_future_unstarted_routine_follows_edits_and_rejects_stale_completion(client):
+    routine_id, body, today = setup_task(client, kind="routines")
+    tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
+    original_today = client.get("/api/state").json()["runs"][0]
+    planned = client.get("/api/state", params={"day": tomorrow}).json()["runs"][0]
+    changed = body | {
+        "title": "Naar bed",
+        "start_time": "18:30",
+        "end_time": "19:30",
+        "steps": [{"text": "Tanden poetsen"}, {"text": "Boekje lezen"}, {"text": "Slapen"}],
+    }
+    assert create(client, "routines", changed, id=routine_id, version=1)[1].status_code == 200
+    # An old open agenda must not apply an old step index to the changed routine.
+    assert (
+        create(client, "runs", {"done": [0]}, id=planned["id"], version=planned["version"])[
+            1
+        ].status_code
+        == 409
+    )
+    fresh = client.get("/api/state", params={"day": tomorrow}).json()["runs"][0]
+    assert fresh["id"] == planned["id"] and fresh["done"] == []
+    assert fresh["body"]["title"] == "Naar bed"
+    assert fresh["body"]["start_time"] == "18:30" and len(fresh["body"]["steps"]) == 3
+    assert fresh["version"] > planned["version"]
+    assert client.get("/api/state").json()["runs"][0] == original_today
+    assert client.get("/api/state", params={"day": tomorrow}).json()["runs"][0] == fresh
+    # A refresh version is not completion history: a later edit must still apply.
+    assert (
+        create(client, "routines", changed | {"title": "Avondritme"}, id=routine_id, version=2)[
+            1
+        ].status_code
+        == 200
+    )
+    later = client.get("/api/state", params={"day": tomorrow}).json()["runs"][0]
+    assert later["body"]["title"] == "Avondritme" and later["version"] > fresh["version"]
+    assert not [row for row in client.get("/api/history").json() if row["kind"] == "runs"]
+
+
+@pytest.mark.parametrize("progress", ["partial", "complete", "reopened"])
+def test_future_routine_with_completion_history_keeps_snapshot_and_points(client, progress):
+    routine_id, body, today = setup_task(client, kind="routines", members=2)
+    tomorrow = (date.fromisoformat(today) + timedelta(days=1)).isoformat()
+    runs = client.get("/api/state", params={"day": tomorrow}).json()["runs"]
+    protected = runs[0]
+    done = [0] if progress == "partial" else [0, 1]
+    assert (
+        create(client, "runs", {"done": done}, id=protected["id"], version=protected["version"])[
+            1
+        ].status_code
+        == 200
+    )
+    if progress == "reopened":
+        assert (
+            create(client, "runs", {"done": []}, id=protected["id"], version=2)[1].status_code
+            == 200
+        )
+    before = client.get("/api/state", params={"day": tomorrow}).json()
+    protected = next(run for run in before["runs"] if run["id"] == protected["id"])
+    assert (
+        create(
+            client,
+            "routines",
+            body | {"title": "Gewijzigd", "steps": [{"text": "Nieuw"}]},
+            id=routine_id,
+            version=1,
+        )[1].status_code
+        == 200
+    )
+    history = client.get("/api/history").json()
+    after = client.get("/api/state", params={"day": tomorrow}).json()
+    assert next(run for run in after["runs"] if run["id"] == protected["id"]) == protected
+    assert (
+        next(run for run in after["runs"] if run["id"] == runs[1]["id"])["body"]["title"]
+        == "Gewijzigd"
+    )
+    assert after["balances"] == before["balances"]
+    assert after["point_transactions"] == before["point_transactions"]
+    assert client.get("/api/history").json() == history
+    assert (
+        create(client, "routines", body | {"archived": True}, id=routine_id, version=2)[
+            1
+        ].status_code
+        == 200
+    )
+    assert client.get("/api/state", params={"day": tomorrow}).json()["runs"] == [protected]
+
+
+@pytest.mark.parametrize("change", ["weekdays", "members", "date", "archived"])
+def test_future_unstarted_routine_respects_changed_schedule_without_deleting_snapshots(
+    client, change
+):
+    routine_id, body, today = setup_task(client, kind="routines", members=2)
+    tomorrow = date.fromisoformat(today) + timedelta(days=1)
+    old = client.get("/api/state", params={"day": str(tomorrow)}).json()["runs"]
+    changes = {
+        "weekdays": {
+            "weekdays": [weekday for weekday in range(7) if weekday != tomorrow.weekday()]
+        },
+        "members": {"members": [body["members"][1]]},
+        "date": {"date": str(tomorrow + timedelta(days=1))},
+        "archived": {"archived": True},
+    }[change]
+    assert (
+        create(client, "routines", body | changes, id=routine_id, version=1)[1].status_code == 200
+    )
+    # A removed future occurrence cannot be completed from an old browser card.
+    assert (
+        create(client, "runs", {"done": [0]}, id=old[0]["id"], version=old[0]["version"])[
+            1
+        ].status_code
+        == 409
+    )
+    visible = client.get("/api/state", params={"day": str(tomorrow)}).json()["runs"]
+    assert len(visible) == (1 if change == "members" else 0)
+    with db.connect() as connection:
+        assert all(
+            connection.execute("SELECT 1 FROM runs WHERE id=?", (run["id"],)).fetchone()
+            for run in old
+        )
+    assert create(client, "routines", body, id=routine_id, version=2)[1].status_code == 200
+    restored = client.get("/api/state", params={"day": str(tomorrow)}).json()["runs"]
+    assert {run["id"] for run in restored} == {run["id"] for run in old}

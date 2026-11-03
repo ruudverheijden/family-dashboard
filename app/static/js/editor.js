@@ -5,7 +5,17 @@ import {
   taskIconMetadata,
   taskIcons
 } from './icons.js';
-import { $, avatar, esc, fmt, selected, uuid, weekdays } from './helpers.js';
+import {
+  $,
+  avatar,
+  esc,
+  fmt,
+  selected,
+  uuid,
+  weekdays,
+  weekdayNames,
+  parseDay
+} from './helpers.js';
 import { bindForm, errorInForm, field, modal, toast } from './dialogs.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
@@ -81,10 +91,11 @@ export function editEntity(kind, item) {
     if (isTask)
       html += `<div class="form-grid"><label>Uitvoering<select name="mode"><option value="individual"${selected(x.mode, 'individual')}>Iedereen een eigen taak</option><option value="shared"${selected(x.mode, 'shared')}>Samen één taak</option></select></label>${field('Punten bij voltooien', 'points', x.points || 0, 'number', 'min="0" max="10000"')}</div>`;
     else
-      html += `<div class="form-grid">${field('Punten bij volledige routine', 'points', x.points || 0, 'number', 'min="0" max="10000"')}${field('Vanaf', 'start_time', x.start_time || '07:00', 'time', 'required')}${field('Tot', 'end_time', x.end_time || '09:00', 'time', 'required')}</div><section class="routine-steps"><div class="routine-steps-head"><strong>Stappen</strong><button type="button" id="add-routine-step" class="secondary">Stap toevoegen</button></div><div id="routine-step-list">${routineSteps.map(routineStep).join('')}</div></section>`;
+      html += `<label class="check-label"><input type="checkbox" id="routine-use-time" ${x.start_time === '' ? '' : 'checked'}>Tijdvenster gebruiken</label><div class="form-grid">${field('Punten bij volledige routine', 'points', x.points || 0, 'number', 'min="0" max="10000"')}${field('Vanaf', 'start_time', x.start_time ?? '07:00', 'time')}${field('Tot', 'end_time', x.end_time ?? '09:00', 'time')}</div><p class="notice">Schakel het tijdvenster uit voor een routine zonder vaste tijd. Die staat boven het tijdrooster in de agenda.</p><section class="routine-steps"><div class="routine-steps-head"><strong>Stappen</strong><button type="button" id="add-routine-step" class="secondary">Stap toevoegen</button></div><div id="routine-step-list">${routineSteps.map(routineStep).join('')}</div></section>`;
     if (item && (isTask || isRoutine))
-      html +=
-        '<p class="notice">Wijzigingen gelden voor nog niet aangemaakte uitvoeringen. Bestaande uitvoeringen en historie blijven behouden.</p>';
+      html += isRoutine
+        ? '<p class="notice">Toekomstige routines die nog nooit zijn afgevinkt volgen je wijzigingen. De voortgang van vandaag en eerdere dagen blijft bewaard.</p>'
+        : '<p class="notice">Wijzigingen gelden voor nog niet aangemaakte uitvoeringen. Bestaande uitvoeringen en historie blijven behouden.</p>';
   }
   modal(
     item
@@ -98,6 +109,32 @@ export function editEntity(kind, item) {
         }[kind],
     `<form id="edit-form"${isTask ? ' class="task-editor"' : ''}>${html}<div class="form-actions">${item ? `<button type="button" id="delete-entity" class="danger">${isTask || isRoutine ? 'Archiveren' : 'Verwijderen'}</button>` : ''}<button type="submit" class="primary">Opslaan ${icon('check')}</button></div></form>`
   );
+  if (isRoutine) {
+    const useTime = $('#routine-use-time');
+    const start = $('#edit-form [name="start_time"]');
+    const end = $('#edit-form [name="end_time"]');
+    const syncTimeInputs = () => {
+      for (const input of [start, end]) {
+        input.disabled = !useTime.checked;
+        input.required = useTime.checked;
+      }
+    };
+    useTime.onchange = () => {
+      if (useTime.checked) {
+        start.value ||= '07:00';
+        end.value ||= '09:00';
+      }
+      syncTimeInputs();
+    };
+    for (const input of [start, end])
+      input.addEventListener('input', () => {
+        if (!start.value && !end.value) {
+          useTime.checked = false;
+          syncTimeInputs();
+        }
+      });
+    syncTimeInputs();
+  }
   if (isTask) {
     const repeat = $('#edit-form [name="repeat"]');
     const weekdayField = $('#edit-form .weekday-field');
@@ -329,9 +366,11 @@ export function editEntity(kind, item) {
     $('#delete-entity').onclick = async () => {
       if (
         !confirm(
-          isTask || isRoutine
-            ? 'Dit sjabloon archiveren? Bestaande uitvoeringen blijven bewaard.'
-            : 'Dit item verwijderen?'
+          isRoutine
+            ? 'Deze routine archiveren? Toekomstige routines die nog nooit zijn afgevinkt verdwijnen uit de planning. Eerdere voortgang blijft bewaard.'
+            : isTask
+              ? 'Dit sjabloon archiveren? Bestaande uitvoeringen blijven bewaard.'
+              : 'Dit item verwijderen?'
         )
       )
         return;
@@ -358,8 +397,8 @@ export function editEntity(kind, item) {
 }
 export function showTemplates(kind) {
   modal(
-    kind === 'tasks' ? 'Taaksjablonen' : 'Routinesjablonen',
-    `<p class="notice">Bestaande uitvoeringen blijven behouden wanneer je een sjabloon wijzigt of archiveert.</p><div class="list">${state.data[kind].map((x) => `<button class="secondary" data-template="${x.id}">${esc(x.icon)} ${esc(x.title)} ${x.archived ? '· gearchiveerd' : ''}${icon('edit')}</button>`).join('') || '<p class="muted">Nog geen sjablonen.</p>'}</div>`
+    kind === 'tasks' ? 'Taaksjablonen' : 'Routines beheren',
+    `<p class="notice">${kind === 'routines' ? 'Toekomstige routines die nog nooit zijn afgevinkt volgen de nieuwe planning. De voortgang van vandaag en eerdere dagen blijft bewaard.' : 'Bestaande uitvoeringen blijven behouden wanneer je een sjabloon wijzigt of archiveert.'}</p><div class="list">${state.data[kind].map((x) => `<button class="secondary" data-template="${x.id}">${esc(x.icon)} ${esc(x.title)} ${x.archived ? '· gearchiveerd' : ''}${kind === 'routines' ? `<small>${esc(x.members.map((id) => state.data.members.find((member) => member.id === id)?.name || 'Gezinslid').join(', '))} · ${esc(weekdayNames.filter((_, index) => x.weekdays.includes(index)).join(', '))}<br>Vanaf ${esc(fmt(parseDay(x.date), { day: 'numeric', month: 'long', year: 'numeric' }))} · ${x.start_time ? `${esc(x.start_time)}–${esc(x.end_time)}` : 'Zonder tijdvenster'}</small>` : ''}${icon('edit')}</button>`).join('') || '<p class="muted">Nog geen sjablonen.</p>'}</div>`
   );
   document.querySelectorAll('[data-template]').forEach(
     (b) =>

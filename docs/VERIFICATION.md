@@ -665,3 +665,382 @@ herstarten voert de aparte voorbereidingsservice niet opnieuw uit.
   JavaScript-syntax, modulegrenzen en `git diff --check`: geslaagd.
 - Niet uitgevoerd: nieuwe GitHub Actions-run op de fix, Linux amd64-browsermatrix,
   fysieke apparaten, commit of Git-push. De tijdelijke Linux-testcontainer is opgeruimd.
+
+## Datum en dagovergang kinddashboard — 1 november 2026
+
+- Fix: volledige datum bij de begroeting; kindmodus vraagt bij de dagovergang of
+  terugkeer naar het tabblad vandaag op in de ingestelde tijdzone. De ouderweergave
+  schuift mee als die vandaag toonde; bewust gekozen andere datums blijven behouden.
+  Ook de opgeslagen ouderdatum voor terugkeer uit kindmodus schuift zo nodig mee.
+- Automatisch: `tests/e2e/test_day_rollover.py` en de bestaande
+  `test_child_mode_personal_tasks_routines_and_rewards`, samen **14/14 geslaagd**
+  in Chromium en WebKit (33,22 seconden). De nieuwe regressies simuleren middernacht
+  en terugkeer na een tijdsprong zonder timerticks; taken en routinestappen beginnen
+  op de nieuwe dag onafgevinkt en de vorige dag blijft via de echte API afgevinkt.
+  De bestaande flow controleert ook kaartgrenzen, overflow en aanraakmaten op
+  390×664, 750×342 en 768×1024, nu met de extra datum.
+- Automatisch: backend/units **107 geslaagd, 4 opt-in Docker-tests overgeslagen**.
+  Ruff lint/format, CSS-opmaak, Prettier na `npm ci --ignore-scripts`,
+  JavaScript-syntax, modulegrenzen en `git diff --check`: geslaagd.
+- Browserstart binnen de sandbox mislukte vóór applicatiebezoek; de geslaagde
+  browserrun hierboven is buiten de sandbox uitgevoerd met de geïsoleerde fixtures.
+- Niet uitgevoerd: volledige browsersuite, Firefox, fysieke apparaten, een echte
+  nachtelijke duurtest of deployment. De terugkeertest simuleert het visibility-event;
+  zij test geen daadwerkelijke OS-sluimerstand. Geen handmatige visuele controle.
+
+### Aanvullende controle ouderdashboard en routinedagen — 1 november 2026
+
+- Opslag en selectie geïnspecteerd: routine-uitvoeringen zijn uniek per sjabloon,
+  kalenderdag en persoon. Alleen ingestelde weekdagen vanaf de startdatum krijgen
+  een uitvoering. Afvinken wijzigt uitsluitend die uitvoering en legt een
+  historie-item met tijdstip vast; dagovergangen wissen die gegevens niet.
+- Extra browserregressie: routine in oudermodus afvinken, naar een niet-ingeplande
+  dag overgaan (geen uitvoering), doorgaan naar de volgende ingeplande dag
+  (nieuwe ID en lege voortgang), terugbladeren naar de originele afgevinkte dag.
+  De volledige oorspronkelijke uitvoering en historie inclusief tijdstip blijven
+  ongewijzigd via de echte API.
+- Definitieve run van `tests/e2e/test_day_rollover.py`: **10/10 geslaagd** in
+  Chromium en WebKit, 18,13 seconden. Een eerdere versie van de nieuwe test
+  gebruikte een onvolledige knopnaam; na correctie hierboven opnieuw uitgevoerd.
+  Ruff lint/format en `git diff --check`: geslaagd.
+- Geen verdere productielogica gewijzigd: de eerdere fix voor het volgen van
+  vandaag omvat ook de ouderweergave. RT-03 en de gebruikersdocumentatie verduidelijkt.
+  Geen deployment of controle tegen de echte gezinsdatabase uitgevoerd.
+
+
+## Routines als onderdeel van agenda en dagoverzicht — 1 november 2026
+
+- Geïmplementeerd: routinekaarten per ingeplande dag in dag-, drie dagen- en
+  weekagenda, met tijdvenster in het rooster en zonder tijdvenster in een aparte
+  rij erboven. Gedeelde overlapindeling met afspraken; korte kaarten houden een
+  aanraakvlak van minimaal 48 pixels. Voltooide kaarten blijven zichtbaar als Klaar.
+- Een agendakaart opent een paneel met dezelfde stappen/uitvoerings-ID's als de
+  routinetab. Afvinken/heropenen, voortgang per persoon, actuele versies, externe
+  wijzigingen, foutmelding na mislukte opslag, datumselectie en focusterugkeer
+  zijn in de browser gecontroleerd. Het paneel is opgenomen in de bestaande
+  invoerbewaking; hiervoor is geen afzonderlijke inactiviteitstest uitgevoerd.
+- Het routineoverzicht toont alleen de gekozen dag. Lege dagen tonen één brede
+  melding en zo mogelijk een knop naar de volgende routinedag. Routines beheren
+  toont sjablonen met personen, weekdagen, startdatum en tijdvenster.
+- Tijdvensters zijn optioneel. De editor heeft een expliciete keuze; beide velden
+  leegmaken schakelt die ook uit. Eén ontbrekende tijd wordt geweigerd. Bestaande
+  uitvoeringen en hun historie blijven onveranderd bij sjabloonbewerkingen.
+- Automatisch: backend/units **110 geslaagd, 4 opt-in Docker-tests overgeslagen**.
+  Ruff lint/format, CSS-format, Prettier, JavaScript-syntax, modulegrenzen en
+  `git diff --check`: geslaagd. `npm ci --ignore-scripts` was in deze sessie uitgevoerd.
+- De brede browserrun leverde **179 geslaagd en 1 fout** (322,43 seconden): WebKit
+  blokkeerde lege optionele tijdvelden met native invalid-events, hoewel de
+  geraadpleegde validity-status geldig leek. De expliciete tijdvensterkeuze en
+  het uitschakelen van lege velden verhelpen dit; beide invoerroutes krijgen een
+  regressietest. De volledige matrix is na deze correctie niet opnieuw gedraaid;
+  alle getroffen routine- en kindmodusflows zijn opnieuw gekozen.
+- Definitieve gerichte browserrun: **40/40 geslaagd** in Chromium en WebKit
+  (89,98 seconden), met `pytest tests/e2e --browser chromium --browser webkit
+  -k "routine or child_mode"`. Inclusief beide manieren om tijdvensters uit te
+  schakelen, de definitieve compacte kaarten en de bestaande routine-editors.
+- Handmatig visueel: mobiele screenshots van het paneel en de tijdlijn
+  geïnspecteerd. Het paneel kreeg een ondoorzichtige achtergrond; lege foutmeldingen
+  zijn verborgen. Korte tijdlijnkaarten zijn compacter gemaakt met tijd naast het
+  routinelabel en zichtbare voortgang.
+- De publieke HTML, kalender-/shell-JavaScript en CSS van de bestaande lokale
+  server op poort 8081 kwamen bij controle overeen met de werkbestanden.
+- Niet uitgevoerd: Firefox, fysieke apparaten, Linux-browsermatrix, Dockerchecks,
+  nieuwe release/image, commit of push. Browserdata blijft tijdelijk en fictief;
+  er zijn geen tests tegen de echte gezinsdatabase uitgevoerd.
+
+## Volledig routinebereik na terugkeer naar de agenda — 1 november 2026
+
+- Geïsoleerd gereproduceerd vóór de fix: na het dagelijkse routineoverzicht wordt
+  bij terugkeer naar de weekagenda geen weekverzoek verstuurd totdat de volgende
+  poll loopt. De regressie pauzeert de klok vóór herladen en faalde vervolgens
+  op het ontbreken van dat weekantwoord binnen vijf seconden.
+- Fix in `shell.js`: directe geforceerde verversing bij terugkeer naar de agenda,
+  afwijzen van antwoorden die niet meer bij de actuele datum/periode passen en
+  direct uitvoeren van een geforceerde verversing die tijdens een lopend verzoek
+  werd gevraagd. Gewone polling wordt bij een lopend verzoek niet extra ingepland.
+- Nieuwe browserregressies: volledige week direct na het routineoverzicht, een
+  vertraagd dagantwoord dat pas na terugkeer arriveert en een dagelijkse routine
+  vanaf vandaag in drie dagen en de volledige volgende week. Datums vóór de
+  startdatum krijgen geen uitvoering. De zes gerichte controles slaagden in
+  Chromium en WebKit (vier in 7,55 seconden, twee in 3,92 seconden).
+- Lokale state-API gecontroleerd: de dagelijkse routine start op 31 oktober 2026;
+  de huidige kalenderweek eindigt op zondag 1 november. De week-API bevat voor
+  die routine 31 oktober en 1 november. Deze controle gebruikt de normale
+  state-API, die volgens het bestaande contract uitvoeringen kan aanmaken.
+  De startdatum en weekdagen zijn niet aangepast.
+- Backend/units: **110 geslaagd, 4 opt-in Docker-tests overgeslagen** (3,54 seconden).
+  Ruff lint/format, CSS-opmaak, Prettier, JavaScript-syntax, modulegrenzen en
+  `git diff --check`: geslaagd. Geen test gebruikt de echte gezinsdatabase.
+- Volledige browseracceptatie na de fix: **188/188 geslaagd** in Chromium en
+  WebKit (94 per browser, 355,61 seconden), zonder retries. Inclusief alle nieuwe
+  bereikregressies, bestaande navigatie, kalender, routinepaneel, kindmodus,
+  beloningen, inactiviteit, formulieren en verbindingsherstel. Alleen de bestaande
+  pytest-playwright-deprecationwaarschuwing. Dit vervangt de eerdere gedeeltelijk
+  geslaagde browserrun als meest recente volledige verificatie.
+- De lokale server op 8081 levert de nieuwe `shell.js` byte voor byte gelijk aan
+  het werkbestand. Een reeds geopend tabblad moet de gewijzigde JavaScript-module
+  opnieuw laden. Firefox, fysieke apparaten en Dockerchecks zijn niet uitgevoerd.
+
+## Concrete oorzaak en herstel van ‘Naar bed’ — 1 november 2026
+
+- De echte lokale database alleen-lezen onderzocht. De dagelijkse routine had de
+  juiste planning, maar tien toekomstige uitvoeringen (twee personen, 2–6 november)
+  bevatten nog de oudere naam ‘Ochtend’, 07:00–08:00 en oude stappen. De eerdere
+  navigatiefix loste deze opgeslagen toekomstige snapshots niet op.
+- Vóór de codewijziging een consistente SQLite-back-up gemaakt:
+  `backups/before-future-routine-repair-2026-11-01-e05c6c59.db` (0600; map genegeerd
+  door Git). De bestaande vijf beschermde routine-uitvoeringen en de complete
+  historie- en puntentabellen zijn met SHA-256 vastgelegd voor vergelijking.
+- Planner herstelt voortaan toekomstige routines zonder vinkjes, afvinkhistorie of
+  puntenboekingen naar het actuele sjabloon, binnen de bestaande transactie. Een
+  gewijzigd uitvoeringsversienummer weigert oude stapindices. Heropenen beschermt
+  de oorspronkelijke uitvoering via zijn historie. Vervallen, onaangeraakte plannen
+  worden verborgen en kunnen niet vanaf een oude kaart worden voltooid; de records
+  worden niet verwijderd. Vandaag en eerdere uitvoeringen worden niet herschreven.
+- Bij routinewijzigingen gebeurt dit in dezelfde transactie als opslag, historie en
+  verzoekdeduplicatie. Bestaande verouderde toekomstplannen worden ook bij normaal
+  inhalen/ophalen hersteld. Er is geen handmatige SQL-update op de echte data gebruikt.
+- Het lokale proces heeft na herladen tien lege toekomstplannen gecorrigeerd. Vergelijking
+  met de back-up bevestigt uitsluitend wijzigingen op 2–6 november, met lege voortgang
+  en één versieverhoging. Alle achttien gecontroleerde toekomstige uitvoeringen van
+  ‘Naar bed’ bevatten daarna de juiste naam en 18:30–19:30. De beschermde uitvoeringen,
+  historische tabel en puntentabel zijn exact gelijk gebleven.
+- De echte lokale week-API voor 2–8 november levert ‘Naar bed’ op alle zeven dagen,
+  twee personen per dag, 18:30–19:30 en de vier juiste stappen. Dit is een controle
+  tegen de lokale installatie; alle geautomatiseerde tests gebruiken fictieve,
+  geïsoleerde databases. De normale state-API kan geplande uitvoeringen aanmaken.
+- Backend/units: **118 geslaagd, 4 opt-in Docker-tests overgeslagen** (4,28 seconden).
+  Acht nieuwe API-regressies dekken herhaald wijzigen, oude browserversies, gedeeltelijk/
+  volledig voltooide en heropende uitvoeringen, punten/historie, gewijzigde weekdagen,
+  personen, startdatum, archivering en heractivering zonder records te verwijderen.
+- De gerichte browserreproductie met een eerder bekeken ochtendwerkweek die naar
+  elke avond verhuist slaagt in Chromium en WebKit (**2/2**, 5,13 seconden), inclusief
+  de juiste stappen in het paneel en behoud van bestaande eerdere snapshots.
+- Ruff lint/format, CSS-opmaak, Prettier, JavaScript-syntax, modulegrenzen en
+  `git diff --check`: geslaagd. Geen Firefox, fysieke apparaten of Dockerchecks uitgevoerd.
+- Definitieve routine-/kindmodusacceptatie: **50/50 geslaagd** in Chromium en
+  WebKit (97,30 seconden), zonder retries. Inclusief aparte kaarten en paneelstappen
+  voor een beschermde oude uitvoering naast een gewijzigd toekomstplan voor een
+  andere persoon. Een bestaande stapassertie is op de juiste routinekaart gericht,
+  omdat twee routines dezelfde stapnaam bevatten. De volledige overige browsermatrix
+  is na deze snapshotwijziging niet opnieuw uitgevoerd.
+
+## Routinecarrousel en klokken in kindmodus — 2 november 2026
+
+| Controle | Resultaat |
+|---|---|
+| Kindmodusregressie met vaste klokpositie, `.venv/bin/python -m pytest tests/e2e/test_dashboard.py -k child_mode_personal_tasks_routines_and_rewards --browser chromium --browser webkit -q` | **6 geslaagd** (drie viewports per browser) |
+| Firefox | Niet gevalideerd: Playwright Firefox start niet (`Could not find profile folder`), ook niet na herinstallatie en gebruik van `/tmp` |
+| CSS, `.venv/bin/python tools/format_css.py --check` | Geslaagd |
+| JavaScript-opmaak, `npm run format:check` | Geslaagd |
+| JavaScript, `node --check app/static/app.js && node --experimental-vm-modules tools/check_frontend.mjs` | Geslaagd; 23 modules geparseerd/gekoppeld, geen cyclische imports |
+| Ruff, `.venv/bin/ruff check tests/e2e/test_dashboard.py && .venv/bin/ruff format --check tests/e2e/test_dashboard.py`; diff, `git diff --check` | Geslaagd |
+
+De browserregressie controleert de lopende routine, automatisch doorschakelen naar
+de volgende starttijd en daarna een routine zonder tijd, de analoge en digitale
+starttijdklok, de actuele bovenbalkklok en navigatie vooruit en terug. Een extra lange,
+meerregelige routinetitel controleert dat de klok niet horizontaal of verticaal verspringt.
+Geen handmatige apparaatcontrole uitgevoerd.
+
+## Kinddashboard als hoofdnavigatietab — 2 november 2026
+
+| Controle | Resultaat |
+|---|---|
+| Kinddashboard en hoofdnavigatie, `.venv/bin/python -m pytest tests/e2e/test_dashboard.py -k child_mode_personal_tasks_routines_and_rewards --browser chromium --browser webkit -q` | **6 geslaagd** (drie viewports per browser) |
+| Terugkeer naar de ouderplanner, `.venv/bin/python -m pytest tests/e2e/test_day_rollover.py -k child_day_rollover --browser chromium -q` | **2 geslaagd** |
+| Spelletjes en terug naar het kinddashboard, `.venv/bin/python -m pytest tests/e2e/test_games.py -k game_price_admin_and_child_entry --browser chromium -q` | **1 geslaagd** |
+| JavaScript-, CSS- en Ruff-controles | Geslaagd |
+
+De kindmodus opent nu een eigen tabblad naast de gewone hoofdtabbladen. De actuele
+tijdklok blijft in de normale bovenbalk; de aparte knop om naar de ouderweergave te
+gaan is verwijderd. De Kalender-tab herstelt de eerder geopende planner. Op smalle
+schermen blijven de hoofdnavigatie en klok zichtbaar en voldoen de knoppen aan de
+minimale aanraakmaat.
+
+
+## Spelletjes als puntenbeloning — 2 november 2026
+
+Automatisch gecontroleerd tegen de gecombineerde werkmap, met uitsluitend
+fictieve profielen, tijdelijke databases en een lokale fictieve Immich-server:
+
+| Controle | Uitgevoerd resultaat |
+|---|---|
+| `.venv/bin/python -m pytest -q` | **129 geslaagd, 4 overgeslagen**; containercontroles niet uitgevoerd |
+| Nieuwe API-regressies `tests/test_games.py` | **8 geslaagd**, onderdeel van de backendrun |
+| Spelletjes + betrokken navigatie: `.venv/bin/python -m pytest tests/e2e/test_games.py tests/e2e/test_dashboard.py -k 'game or child_mode_personal or points_reward_request or navigation_responsive or iphone13_touch' --browser chromium --browser webkit -q --tracing retain-on-failure --screenshot only-on-failure` | **36 geslaagd, 2 gefaald**; alle 16 spelletjesgevallen geslaagd. De twee fouten waren een dubbelzinnige saldo-selector in de bestaande beloningstest, door hetzelfde saldo in verborgen beheerinhoud. Selector gericht op `.rewards-summary`. |
+| Hertest na die selectorcorrectie: `tests/e2e/test_dashboard.py -k points_reward_request --browser chromium --browser webkit -q` | **2 geslaagd**; daarmee zijn alle 38 betrokken gevallen over deze run en hertest geslaagd |
+| `.venv/bin/ruff check .` en `.venv/bin/ruff format --check .` | Geslaagd |
+| `.venv/bin/python tools/format_css.py --check` | Geslaagd, bestaande CSS-regelvolgorde behouden |
+| `npm ci --ignore-scripts` en `npm run format:check` | Geslaagd |
+| `node --check app/static/app.js` en `node --experimental-vm-modules tools/check_frontend.mjs` | Geslaagd; **23 modules**, geen cyclische imports |
+| `git diff --check` | Geslaagd |
+| Firefox-startpoging bij spelletjesmatrix | Niet gevalideerd: Playwright Firefox stopt vóór de tests met `Could not find profile folder` |
+
+De speltests omvatten aankoop, onvoldoende saldo en reserveringen, beheerrechten,
+prijsconflicten, twee gelijktijdige aankopen, idempotente verzoeken en zetten,
+servergestuurd verlopen en stoppen, verborgen Memory-kaarten, alle drie
+speldoelen, hervatten met dezelfde eindtijd, visuele orkestreeksen, mislukte
+foto-preflight zonder afschrijving, behoud van andere instellingsconcepten en
+onzekere HTTP-antwoorden na een al verwerkte aankoop/zet. De browsercontrole
+gebruikt 390×664, 750×342 en 768×1024 en controleert ook de bestaande responsive
+hoofdnavigatie en kindmodus. De navigatietest controleert zichtbare tabs, omdat
+het gelijktijdig toegevoegde kinddashboardtab in de ouderweergave verborgen is.
+
+Een eerder gestarte volledige browsermatrix is afgebroken omdat de kindnavigatie
+en bijbehorende tests tijdens die run gelijktijdig wijzigden. Daarna is de
+bovenstaande gerichte set uitgevoerd. De volledige overige browsermatrix is
+na de laatste gecombineerde wijzigingen niet opnieuw afgetekend.
+
+**Niet handmatig uitgevoerd:** fysieke touchscreens, hoorbare kwaliteit van de
+synthetische dierentonen, de laatste-30-secondenaftelling, automatische
+inactiviteitsonderdrukking en de echte Immich-installatie. Verlopen is wel via
+de API getest. De browserproeven gebruiken testfoto's, geen persoonlijke albums.
+
+## Confetti bij routine-stappen in kinddashboard — 2 november 2026
+
+| Controle | Resultaat |
+|---|---|
+| `.venv/bin/python -m pytest tests/e2e/test_dashboard.py -k 'child_mode_personal_tasks_routines_and_rewards and size0' --browser chromium -q` | **1 geslaagd** |
+| `node --check app/static/app.js` en `node --experimental-vm-modules tools/check_frontend.mjs` | Geslaagd; **23 modules**, geen cyclische imports |
+| `npm run format:check`, Ruff voor de aangepaste E2E-test en `git diff --check` | Geslaagd |
+
+De kindmodusregressie bevestigt dat zowel een gewone kindtaak als een afzonderlijke
+routine-stap dezelfde confetti-animatie activeert. De bestaande routineviering blijft
+voorbehouden aan het voltooien van de volledige routine.
+
+
+## Dierenorkest: voorbereiding en geluidsknop — 2 november 2026
+
+- Automatisch: `tests/e2e/test_games.py -k orchestra --browser chromium --browser webkit -q`
+  geeft **8 geslaagd**. Naast het volledige spel controleert een gepauzeerde
+  Playwright-klok de cijfers 3, 2 en 1 op telkens één seconde, daarna exact
+  1,5 seconde zonder dier-aanwijzing en vervolgens de start van de reeks.
+- Dezelfde regressie controleert op 390×664, 750×342 en 768×1024 dat de
+  geluidsknop een icoon en toegankelijke aan/uit-status heeft, naast Stoppen
+  staat en tijdens de overlay bedienbaar blijft. Schakelen onderbreekt de
+  aftelling niet; herhaling en volgende rondes starten zonder nieuwe aftelling.
+  Stoppen ruimt de presentatie-timers op zonder browserfouten.
+- Automatisch: backendrun **129 geslaagd, 4 containercontroles overgeslagen**;
+  Ruff lint/opmaak, CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen
+  (**23 modules**, geen cycli) en `git diff --check` geslaagd.
+- Geen nieuwe handmatige apparaat- of geluidscontrole uitgevoerd. Firefox
+  is voor deze aanpassing niet opnieuw geprobeerd; de eerdere startbeperking
+  blijft open. De overige volledige browsermatrix is niet herhaald.
+
+- Aanvullend automatisch: `tests/e2e/test_games.py -k 'maze_purchase or game_price_admin'
+  --browser chromium --browser webkit -q` geeft **8 geslaagd** voor de gedeelde
+  spelkop, sessiebediening en de doolhof-layout op de drie schermformaten.
+
+## Voltooid-geluid bij taken en routines
+
+- `.venv/bin/python -m pytest tests/e2e/test_dashboard.py -k child_mode_personal_tasks_routines_and_rewards --browser chromium --browser webkit -q`: **6 geslaagd**. Een gemockte Web Audio-context bevestigt dat voltooien van een taak en routinestap het gewone geluid start, heropenen stil blijft en alleen de laatste routinestap in het kinddashboard het extra supersonische geluid afspeelt.
+- `npm run format:check`, `npm run check:modules`, Ruff voor de aangepaste E2E-test en `git diff --check`: geslaagd; **23 modules**, geen cycli.
+- Het supersonische geluid is het Pixabay-effect [Success 1](https://pixabay.com/sound-effects/film-special-effects-success-1-6297/) van Leszek_Szary (Freesound), onder de Pixabay Content License; lokaal opgenomen als `app/static/audio/routine-success-6297.mp3`. De browserregressie bevestigt dat het MP3-bestand wordt opgehaald en gedecodeerd. De hoorbare klank is niet handmatig op fysieke apparaten beoordeeld.
+
+
+## Dierenorkest: vensterbrede blur en aftellen per ronde — 2 november 2026
+
+- Automatisch: `tests/e2e/test_games.py -k orchestra --browser chromium --browser webkit -q`
+  geeft **8 geslaagd**. De aangepaste regressie controleert een transparante
+  blur van 12px, dekking tot de spelvensterrand, een volledig zichtbaar en
+  gecentreerd cijfer op 390×664, 750×342 en 768×1024, en 3–2–1 plus 1,5 seconde
+  rust bij zowel de eerste als de volgende ronde. De volledige spelstroom met
+  zes reeksen slaagt in beide browsers. Handmatig herhalen binnen een ronde
+  start zonder nieuwe aftelling; stoppen ruimt de timers en scrollblokkering op.
+- Visuele controle: Chromium-screenshots van de daadwerkelijke spelmodal op
+  390×664 en 750×342 bekeken. De blur volgt de buitenrand zonder binnenrechthoek;
+  het cijfer is ook liggend volledig zichtbaar. Geluid en Stoppen blijven erboven
+  bedienbaar. Dit is screenshotcontrole, geen fysieke touchscreenacceptatie.
+- Backend: **129 geslaagd, 4 containercontroles overgeslagen**. Ruff lint/opmaak,
+  CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen (**23 modules**, geen
+  cycli), plus `git diff --check`: geslaagd.
+- Firefox, fysieke apparaten en hoorbare geluidskwaliteit niet opnieuw getest.
+  De volledige overige browsermatrix is voor deze kleine frontendwijziging
+  niet herhaald. Deze wijziging vervangt de eerdere startaftelling die alleen
+  bij een nieuw spel werd getoond.
+
+
+## Dierenorkest: foutfeedback en echte dieropnames — 2 november 2026
+
+- Backendrun: **129 geslaagd, 4 containercontroles overgeslagen**. De bestaande
+  API-regressie controleert nu ook `feedback=mistake` na een foute keuze en het
+  wissen daarvan na een juiste keuze.
+- `tests/e2e/test_games.py -k 'mistake or local_audio or recording_can_play'
+  --browser chromium --browser webkit -q`: **8 geslaagd**. Met geluid aan/uit
+  worden foutoverlay, exact 2 seconden feedback, het juiste foutbestand,
+  opnieuw aftellen, dezelfde ronde, ongewijzigd puntensaldo en herstel na een
+  juiste keuze gecontroleerd. Beide browsers decoderen alle vijf lokale WAV's
+  met de verwachte duur en zonder clipping. Een afzonderlijke test bevestigt
+  dat de echte opname na inschakelen van geluid daadwerkelijk kan starten.
+- `tests/e2e/test_games.py -k 'orchestra_visual or orchestra_countdown'
+  --browser chromium --browser webkit -q`: **8 geslaagd** voor het volledige
+  spel, aftellen per ronde, blur, headerbediening en de drie schermformaten.
+- Visuele screenshotcontrole: foutoverlay in Chromium op 390×664 en 750×342
+  bekeken; tekst en retry-symbool zijn volledig zichtbaar, de vensterbrede blur
+  blijft intact en Geluid/Stoppen zijn bereikbaar. Geen fysieke apparaatcontrole.
+- De vijf WAV-bestanden zijn lokaal opgenomen. De vier dieropnames zijn op hun
+  primaire Freesound-pagina als CC0 gecontroleerd; bronnen en bewerkingen staan
+  in `ORCHESTRA_AUDIO.md`. Piekniveau na bewerking is 0,60 voor de dieren; het
+  eigen foutgeluid is zachter. Totale bestandsgrootte ongeveer 115 kB.
+- Ruff lint/opmaak, CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen
+  (**24 modules**, geen cyclische imports), plus `git diff --check`: geslaagd.
+- Niet uitgevoerd: luisteren via de speakers van het uiteindelijke scherm,
+  fysieke touchscreens, Firefox en de volledige overige browsermatrix.
+  Geautomatiseerd starten/decoderen bewijst afspeelbaarheid; luisteracceptatie
+  van herkenbaarheid en volume op het echte apparaat blijft handmatig open.
+
+
+## Dierenorkest: dierenfeest, geluid standaard aan en herhaalicoon — 2 november 2026
+
+- Automatisch: `tests/e2e/test_games.py -k orchestra --browser chromium --browser
+  webkit -q`: **22 geslaagd**. De volledige zesrondenflow controleert het feest
+  uitsluitend bij spelvoltooiing, 42 icoontjes met precies kikker/poes/hond/kuiken,
+  zichtbare animatie-opacity, leesbare inhoud op 390×664, 750×342 en 768×1024,
+  automatisch en handmatig sluiten en de rustige variant bij minder beweging.
+  Een bewust vertraagd terminale-sessieantwoord mag de viering niet afbreken.
+- Dezelfde set controleert standaard ingeschakeld geluid (ook echt afspelen na
+  alleen de aankoopknop), expliciet dempen, foutfeedback en de herhaalknop met
+  een zichtbaar SVG-icoon van minimaal 36px en toegankelijke naam.
+- Automatisch: `tests/e2e/test_dashboard.py -k
+  routine_completion_celebrates_only_the_last_step_with_rotating_variants
+  --browser chromium --browser webkit -q`: **2 geslaagd**. De bestaande routine-
+  animaties behouden tien wisselende thema's en niet-herhalende boodschappen.
+- Visueel: Chromium-screenshots van het dierenfeest op 390×664 en 750×342
+  bekeken met lopende animatie, plus de grote herhaalknop op mobiel. Alle vier
+  de dieren zijn zichtbaar; tekst en sluitknop passen binnen de spelmodal.
+- Backendrun: **129 geslaagd, 4 containercontroles overgeslagen**. Ruff lint en
+  opmaak, CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen (**24 modules**,
+  geen cycli), plus `git diff --check`: geslaagd. Een reeds gewijzigde kloktest
+  is daarbij uitsluitend met Ruff geformatteerd; bestaande inhoud behouden.
+- De gebruiker heeft de nieuwe dierengeluiden in deze chat goedgekeurd.
+  Geen nieuwe fysieke touchscreen- of Firefox-controle en geen volledige
+  overige browsermatrix uitgevoerd.
+
+
+## Dierenorkest: ruimere popup en gecentreerde onderbediening — 2 november 2026
+
+- Automatisch: `tests/e2e/test_games.py -k orchestra --browser chromium --browser
+  webkit -q`: **24 geslaagd**. De uitgebreide layoutcontrole gebruikt 390×664,
+  750×342, 768×1024 en 1280×900. Ze controleert het muziekicoon, de horizontaal
+  gecentreerde herhaalknop, minstens 16px ruimte tussen uitleg/bord/onderbediening,
+  ruimte onder de knop en een breder venster op grotere schermen. De bestaande
+  timing-, foutfeedback-, audio- en dierenvieringstests slagen eveneens.
+- Visueel: Chromium-screenshots van de actieve popup op 390×664, 750×342 en
+  1280×900 bekeken. De titel heeft muzieknoten, uitleg en knoppen hebben meer
+  ruimte, en Opnieuw staat midden onderaan. De lage liggende variant heeft vier
+  dieren naast elkaar en behoudt zichtbare ondermarge. Ook de viering is in deze
+  formaten via de tijdelijke screenshotrun uitgevoerd (**3 geslaagd**).
+- Backendrun: **129 geslaagd, 4 containercontroles overgeslagen**. Ruff lint en
+  opmaak, CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen (**24 modules**,
+  geen cycli), plus `git diff --check`: geslaagd.
+- Geen fysieke apparaat- of Firefox-controle en geen volledige overige
+  browsermatrix uitgevoerd. De layoutaanpassing is op Dierenorkest begrensd.
+
+## Release 0.3.0 — 3 november 2026
+
+- Backend: 129 geslaagd, 4 optionele containercontroles overgeslagen.
+- Ruff lint en opmaak, CSS-opmaak, Prettier, JavaScript-syntax en modulegrenzen
+  (24 modules, geen cycli), en `git diff --check`: geslaagd.
+- De release-image is met een vernieuwde basisimage en zonder automatische
+  Git-bronmetadata gebouwd voor Linux amd64 en arm64. Beide varianten zijn lokaal
+  gestart en gaven via `/api/health` status 200 en versie `0.3.0`.

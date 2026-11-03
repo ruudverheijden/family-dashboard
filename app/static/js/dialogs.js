@@ -10,7 +10,7 @@ export function toast(message) {
   toast.timer = setTimeout(() => $('#toast').classList.add('hidden'), 4200);
 }
 export function hasInput() {
-  return $('#dialog').open || !!$('#quick-add input')?.value;
+  return $('#dialog').open || $('#routine-dialog').open || !!$('#quick-add input')?.value;
 }
 export function bindBackdropClose(dialog, onClose = () => dialog.close()) {
   dialog.addEventListener('click', (event) => {

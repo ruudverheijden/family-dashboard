@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from ..db import entities, settings
 from ..errors import DomainError
+from .games import active_sessions, catalog
 from .planner import catch_up, materialize, read_runs
 from .points import point_balances
 
@@ -88,6 +89,8 @@ def state(database, photos, day: str | None = None, period: str = "day"):
             },
             "rewards": [reward for reward in entities(db, "rewards") if not reward.get("archived")],
             "balances": point_balances(db),
+            "games": catalog(db),
+            "game_sessions": active_sessions(db),
             "reward_requests": [
                 dict(row)
                 for row in db.execute(

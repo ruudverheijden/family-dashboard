@@ -16,6 +16,8 @@ export const paths = {
   edit: 'm4 16 12-12 4 4L8 20H4z M14 6l4 4',
   people:
     'M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-2a6 6 0 0 1 12 0v2 M16 4a4 4 0 0 1 0 8 M17 15a5 5 0 0 1 5 5',
+  volume: 'M11 5 6 9H3v6h3l5 4V5 M15 8a6 6 0 0 1 0 8 M18 5a10 10 0 0 1 0 14',
+  muted: 'M11 5 6 9H3v6h3l5 4V5 M16 9l6 6 M22 9l-6 6',
   pause: 'M8 5v14 M16 5v14',
   play: 'm8 4 12 8-12 8z',
   lock: 'M5 10h14v11H5z M8 10V6a4 4 0 0 1 8 0v4',

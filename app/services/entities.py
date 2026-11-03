@@ -7,7 +7,7 @@ from ..db import entities, settings
 from ..errors import DomainError
 from ..schemas import Mutation
 from ..validation import _uuid, validate
-from .planner import catch_up
+from .planner import catch_up, read_runs, refresh_future_routines
 from .points import update_completion_points
 
 
@@ -44,6 +44,13 @@ def mutate(kind: str, body: Mutation, database):
             row = db.execute("SELECT * FROM runs WHERE id=?", (body.id,)).fetchone()
             if not row or body.action != "save":
                 raise DomainError(404)
+            if row["kind"] == "routines":
+                refresh_future_routines(db)
+                row = db.execute("SELECT * FROM runs WHERE id=?", (body.id,)).fetchone()
+                if not any(run["id"] == body.id for run in read_runs(db, row["day"])):
+                    raise DomainError(
+                        409, "De routineplanning is gewijzigd. Vernieuw het overzicht."
+                    )
             done = body.body.get("done")
             template = json.loads(row["body"])
             max_steps = len(template["steps"]) if row["kind"] == "routines" else 1
@@ -165,6 +172,8 @@ def mutate(kind: str, body: Mutation, database):
                 ),
             )
             version += 1
+            if kind == "routines":
+                refresh_future_routines(db)
         result = {"ok": True, "version": version}
         db.execute(
             "INSERT INTO requests VALUES (?,?,?)",

@@ -1,7 +1,8 @@
 """Requirement IDs identify acceptance coverage; integration responses are explicit fixtures."""
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -137,11 +138,11 @@ def test_navigation_responsive_UI01_09(dashboard, size):
         assert p.locator(".calendar-time-scroll").evaluate(
             "(timeline) => timeline.scrollWidth === timeline.clientWidth"
         )
-    for tab in ["Home Assistant", "Immich", "Boodschappen", "Kalender"]:
+    for tab in ["Spelletjes", "Home Assistant", "Immich", "Boodschappen", "Kalender"]:
         p.get_by_role("navigation", name="Hoofdnavigatie").get_by_role(
             "button", name=tab, exact=True
         ).click()
-        for button in p.locator(".main-tabs button").all():
+        for button in p.locator(".main-tabs button:visible").all():
             expect(button).to_be_in_viewport()
         assert p.evaluate("document.documentElement.scrollWidth <= innerWidth"), tab
     expect(p.locator(".date-nav h2")).to_have_text(title)
@@ -317,7 +318,7 @@ def test_iphone13_touch_navigation_and_settings(browser, playwright, server, dev
             assert nav_box["y"] + nav_box["height"] <= header["y"] + header["height"]
             expect(p.locator(".brand")).to_be_hidden()
             expect(p.locator("#admin")).to_be_visible()
-        for name in ["Home Assistant", "Immich", "Boodschappen", "Kalender"]:
+        for name in ["Spelletjes", "Home Assistant", "Immich", "Boodschappen", "Kalender"]:
             button = p.get_by_role("navigation", name="Hoofdnavigatie").get_by_role(
                 "button", name=name, exact=True
             )
@@ -1119,9 +1120,13 @@ def test_routine_is_visible_when_not_scheduled_today(dashboard):
     }""")
     p.locator('input[name="weekdays"]').nth(today_index).uncheck()
     save(p)
-    expect(p.get_by_text("Geen routine gepland op", exact=False)).to_be_visible()
-    expect(p.locator(".routine-preview")).to_contain_text("Avondroutine")
-    expect(p.locator(".routine-preview")).to_contain_text("Lezen")
+    expect(p.get_by_text("Geen routines op", exact=False)).to_be_visible()
+    expect(p.locator(".routine-grid > .panel")).to_have_count(1)
+    expect(p.locator(".routine-preview")).to_have_count(0)
+    expect(p.locator(".routine-empty button[data-day]")).to_be_visible()
+    p.get_by_role("button", name="Routines beheren", exact=True).click()
+    expect(p.locator("#dialog [data-template]")).to_contain_text("Avondroutine")
+    p.get_by_role("button", name="Sluiten", exact=True).click()
     expect(p.get_by_role("button", name="Voltooi Lezen")).to_have_count(0)
 
 
@@ -1535,7 +1540,7 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
 
     section(p, "Beloningen")
     p.locator("[data-member]").filter(has_text="Alex").click()
-    expect(p.get_by_text("5 beschikbaar", exact=False)).to_be_visible()
+    expect(p.locator(".rewards-summary")).to_contain_text("5 beschikbaar")
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
     p.get_by_role("button", name="Beloning toevoegen").click()
     p.get_by_label("Naam", exact=True).fill("Filmavond")
@@ -1554,7 +1559,7 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     expect(p.get_by_text("Beloning goedgekeurd; punten afgeschreven.")).to_be_visible()
     p.get_by_role("button", name="Sluiten").click()
     section(p, "Beloningen")
-    expect(p.get_by_text("1 beschikbaar", exact=False)).to_be_visible()
+    expect(p.locator(".rewards-summary")).to_contain_text("1 beschikbaar")
     expect(p.get_by_text("Goedgekeurd", exact=True)).to_be_visible()
     p.get_by_role("button", name="Vorige dag").click()
     expect(p.get_by_text("Geen transacties op deze datum.")).to_be_visible()
@@ -1562,10 +1567,110 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     expect(p.get_by_text("Goedgekeurd", exact=True)).to_be_visible()
 
 
+@pytest.mark.parametrize("width", [390, 1200])
+def test_admin_reward_list_spacing_and_price_alignment(dashboard, width):
+    p = dashboard
+    p.set_viewport_size({"width": width, "height": 844})
+    login(p)
+    add_member(p)
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+
+    for title, price in (("Filmavond", "4"), ("Iets kiezen", "12")):
+        p.get_by_role("button", name="Beloning toevoegen").click()
+        p.get_by_label("Naam", exact=True).fill(title)
+        p.get_by_label("Prijs in punten").fill(price)
+        p.get_by_role("button", name="Opslaan", exact=True).click()
+        expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+
+    rows = p.locator(".reward-admin-table tbody tr")
+    expect(rows).to_have_count(2)
+    alignment = p.locator(".reward-admin-price").evaluate_all(
+        "(cells) => cells.map((cell) => Math.round(cell.getBoundingClientRect().right))"
+    )
+    assert len(set(alignment)) == 1
+    assert (
+        p.locator("[data-reward-new]").evaluate("(button) => getComputedStyle(button).marginTop")
+        == "12px"
+    )
+    assert (
+        p.locator("#new-member").evaluate("(button) => getComputedStyle(button).marginTop")
+        == "12px"
+    )
+    assert p.locator(".reward-admin-table").evaluate(
+        "(table) => table.scrollWidth <= table.clientWidth"
+    )
+
+
+def test_parent_can_adjust_member_points_without_a_reason(dashboard):
+    p = dashboard
+    login(p)
+    add_member(p)
+    p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
+    p.get_by_role("button", name="Saldo aanpassen voor Alex", exact=True).click()
+    expect(p.get_by_role("heading", name="Puntensaldo aanpassen · Alex")).to_be_visible()
+    p.get_by_label("Correctie in punten (+ of −)").fill("5")
+    expect(
+        p.get_by_text("Na correctie: 5 totaal · 0 gereserveerd · 5 beschikbaar.")
+    ).to_be_visible()
+    p.get_by_role("button", name="Correctie opslaan").click()
+    expect(p.get_by_role("heading", name="Ons dashboard instellen")).to_be_visible()
+    expect(p.get_by_text("5 totaal · 0 gereserveerd · 5 beschikbaar")).to_be_visible()
+
+    p.get_by_role("button", name="Sluiten", exact=True).click()
+    section(p, "Beloningen")
+    p.locator("[data-member]").filter(has_text="Alex").click()
+    expect(p.get_by_text("Handmatige correctie", exact=False)).to_be_visible()
+    expect(p.get_by_text("+5", exact=True)).to_be_visible()
+
+
 @pytest.mark.parametrize("size", [(390, 664), (750, 342), (768, 1024)])
 def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     p = dashboard
     p.set_viewport_size(dict(zip(("width", "height"), size)))
+    state_data = p.request.get(p.url + "api/state").json()
+    today = date.fromisoformat(state_data["day"])
+    p.clock.install(
+        time=datetime.combine(today, time(10, 30), ZoneInfo(state_data["config"]["timezone"]))
+    )
+    p.reload()
+    p.evaluate("""() => {
+      window.completionSoundStarts = 0;
+      window.supersonicSoundStarts = 0;
+      window.supersonicDecodedBytes = 0;
+      window.AudioContext = class {
+        state = 'running';
+        currentTime = 0;
+        destination = {};
+        decodeAudioData(audioData) {
+          window.supersonicDecodedBytes = audioData.byteLength;
+          return Promise.resolve({});
+        }
+        createOscillator() {
+          return {
+            frequency: { setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+            connect() { return this; },
+            start() { window.completionSoundStarts++; },
+            stop() {}
+          };
+        }
+        createBufferSource() {
+          return {
+            buffer: null,
+            connect() { return this; },
+            start() { window.supersonicSoundStarts++; }
+          };
+        }
+        createGain() {
+          return {
+            gain: {
+              setValueAtTime() {},
+              exponentialRampToValueAtTime() {}
+            },
+            connect() { return this; }
+          };
+        }
+      };
+    }""")
     login(p)
     add_member(p, "Ouder", role="Ouder")
     p.get_by_role("button", name="Beheerinstellingen", exact=True).click()
@@ -1582,13 +1687,33 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     save(p)
 
     section(p, "Routines")
-    p.get_by_role("button", name="Nieuwe routine", exact=True).click()
-    p.get_by_label("Titel", exact=True).fill("Avondroutine")
-    p.get_by_label("Alex", exact=True).check()
-    p.get_by_label("Titel stap 1").fill("Boekje lezen")
-    p.get_by_role("button", name="Stap toevoegen").click()
-    p.get_by_label("Titel stap 2").fill("Pyjama aan")
-    save(p)
+
+    def add_routine(title, start_time, end_time, steps):
+        p.get_by_role("button", name="Nieuwe routine", exact=True).click()
+        p.get_by_label("Titel", exact=True).fill(title)
+        p.get_by_label("Alex", exact=True).check()
+        use_time = p.get_by_role("checkbox", name="Tijdvenster gebruiken", exact=True)
+        if start_time:
+            use_time.check()
+            p.get_by_label("Vanaf", exact=True).fill(start_time)
+            p.get_by_label("Tot", exact=True).fill(end_time)
+        else:
+            use_time.uncheck()
+        for index, step in enumerate(steps, start=1):
+            if index > 1:
+                p.get_by_role("button", name="Stap toevoegen").click()
+            p.get_by_label(f"Titel stap {index}").fill(step)
+        save(p)
+
+    add_routine("Korte routine", "10:00", "11:00", ["Boekje lezen", "Pyjama aan"])
+    add_routine(
+        "Dit is een bijzonder lange middagroutine met een titel die over meerdere regels "
+        "wordt afgebroken",
+        "12:00",
+        "13:00",
+        ["Buiten spelen"],
+    )
+    add_routine("Vrije routine", "", "", ["Vrij spelen"])
 
     section(p, "Beloningen")
     p.locator("[data-member]").filter(has_text="Alex").click()
@@ -1615,11 +1740,18 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     assert 0 <= gap <= 8
     p.get_by_role("button", name="Kindmodus voor Alex", exact=True).click()
     expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
-    expect(p.locator(".main-tabs")).to_be_hidden()
+    expect(p.locator(".main-tabs")).to_be_visible()
+    expect(p.locator("#child-dashboard-tab")).to_be_visible()
+    expect(p.locator("#child-dashboard-tab")).to_have_attribute("aria-current", "page")
     expect(p.locator("#admin")).to_be_hidden()
+    expect(p.locator(".topbar")).to_be_visible()
+    expect(p.locator("#clock-toggle")).to_be_visible()
+    expect(p.locator("#analog-clock")).to_have_attribute(
+        "aria-label", "Analoge klok, 10:30. Klik voor een grote klok"
+    )
 
     expect(p.get_by_role("heading", name="Hoi Alex!")).to_be_visible()
-    expect(p.locator(".child-welcome .child-exit svg")).to_have_count(1)
+    expect(p.get_by_role("button", name="Naar ouderweergave")).to_have_count(0)
     assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
     for card in p.locator(".child-welcome, .child-task, .child-routine-card, .child-rewards").all():
         bounds = card.bounding_box()
@@ -1629,21 +1761,66 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
         assert bounds["width"] >= MIN_TOUCH_TARGET and bounds["height"] >= MIN_TOUCH_TARGET, bounds
     expect(p.get_by_role("heading", name="Mijn taken")).to_be_visible()
     expect(p.get_by_role("heading", name="Mijn routines")).to_be_visible()
+    expect(p.locator(".child-routine-card")).to_have_count(1)
+    expect(p.locator(".child-routine-card")).to_contain_text("Korte routine")
+    expect(p.locator(".child-routine-time time")).to_have_text("10:00")
+    expect(p.get_by_role("img", name="Analoge klok voor starttijd 10:00")).to_be_visible()
+    expect(p.locator('[data-child-routine-nav="-1"]')).to_be_disabled()
+    expect(p.locator('[data-child-routine-nav="1"]')).to_be_enabled()
+    initial_clock_position = p.locator(".child-routine-clock").bounding_box()
+
+    p.clock.fast_forward(30 * 60 * 1000)
+    expect(p.locator(".child-routine-card")).to_contain_text("lange middagroutine")
+    expect(p.locator(".child-routine-time time")).to_have_text("12:00")
+    long_title_clock_position = p.locator(".child-routine-clock").bounding_box()
+    assert long_title_clock_position["x"] == pytest.approx(initial_clock_position["x"], abs=1)
+    assert long_title_clock_position["y"] == pytest.approx(initial_clock_position["y"], abs=1)
+    p.clock.fast_forward(2 * 60 * 60 * 1000 + 30 * 60 * 1000)
+    expect(p.locator(".child-routine-card")).to_contain_text("Vrije routine")
+    expect(p.locator(".child-routine-time")).to_have_count(0)
+    expect(p.locator('[data-child-routine-nav="1"]')).to_be_disabled()
+    expect(p.locator("#analog-clock")).to_have_attribute(
+        "aria-label", "Analoge klok, 13:30. Klik voor een grote klok"
+    )
+    p.locator('[data-child-routine-nav="-1"]').click()
+    p.locator('[data-child-routine-nav="-1"]').click()
+    expect(p.locator(".child-routine-card")).to_contain_text("Korte routine")
+
     expect(p.get_by_role("button", name="Voltooi Speelgoed opruimen")).to_be_visible()
     expect(p.get_by_role("button", name="Nog 5 nodig")).to_be_disabled()
     expect(p.get_by_text("Nog 5 sterren voor Film kiezen")).to_be_visible()
     expect(p.locator(".child-reward-icon")).to_have_text("🍰")
 
     p.get_by_role("button", name="Voltooi Speelgoed opruimen").click()
+    expect(p.locator(".confetti-burst .confetti-piece")).to_have_count(28)
+    assert p.evaluate("window.completionSoundStarts") >= 3
+    assert p.evaluate("window.supersonicSoundStarts") == 0
     task = p.locator(".child-task").filter(has_text="Speelgoed opruimen")
     expect(task).to_contain_text("Klaar!")
     expect(task.get_by_role("button", name="Heropen Speelgoed opruimen")).to_have_attribute(
         "aria-pressed", "true"
     )
+    completion_sound_starts = p.evaluate("window.completionSoundStarts")
+    task.get_by_role("button", name="Heropen Speelgoed opruimen").click()
+    expect(task.get_by_role("button", name="Voltooi Speelgoed opruimen")).to_be_visible()
+    assert p.evaluate("window.completionSoundStarts") == completion_sound_starts
+    task.get_by_role("button", name="Voltooi Speelgoed opruimen").click()
+    expect(task.get_by_role("button", name="Heropen Speelgoed opruimen")).to_be_visible()
+    assert p.evaluate("window.completionSoundStarts") >= completion_sound_starts + 3
     expect(p.get_by_role("button", name="Vraag aan")).to_be_enabled()
 
+    expect(p.locator(".confetti-burst")).to_have_count(0)
     p.get_by_role("button", name="Voltooi Boekje lezen voor Alex").click()
     expect(p.get_by_text("1 van 2 klaar")).to_be_visible()
+    assert p.evaluate("window.completionSoundStarts") >= completion_sound_starts + 6
+    assert p.evaluate("window.supersonicSoundStarts") == 0
+    expect(p.locator(".confetti-burst .confetti-piece")).to_have_count(28)
+    expect(p.locator(".routine-celebration")).to_have_count(0)
+    p.get_by_role("button", name="Voltooi Pyjama aan voor Alex").click()
+    expect(p.locator(".routine-celebration")).to_be_visible()
+    expect(p.locator(".routine-celebration h2")).to_contain_text("Alex")
+    p.wait_for_function("window.supersonicSoundStarts === 1")
+    assert p.evaluate("window.supersonicDecodedBytes") > 0
 
     p.get_by_role("button", name="Vraag aan").click()
     expect(p.get_by_role("button", name="Aangevraagd")).to_be_disabled()
@@ -1651,7 +1828,9 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
         "Je aanvraag wacht op een volwassene."
     )
 
-    p.get_by_role("button", name="Naar ouderweergave").click()
+    p.get_by_role("navigation", name="Hoofdnavigatie").get_by_role(
+        "button", name="Kalender", exact=True
+    ).click()
     expect(p.locator(".subnav")).to_be_visible()
     expect(p.locator(".family-filter")).to_be_visible()
     expect(p.locator("[data-member][aria-pressed='true']")).to_contain_text("Alex")

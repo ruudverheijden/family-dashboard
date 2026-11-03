@@ -57,11 +57,16 @@ export function rewardsView() {
             .map(
               (t) =>
                 `<div class="history-item">${esc(
-                  {
-                    completion: 'Taak of routine voltooid',
-                    'completion-undone': 'Voltooiing ongedaan gemaakt',
-                    'reward-redemption': 'Beloning goedgekeurd'
-                  }[t.reason] || t.reason
+                  t.reason === 'manual-adjustment'
+                    ? 'Handmatige correctie'
+                    : t.reason.startsWith('manual-adjustment:')
+                      ? `Handmatige correctie: ${t.reason.slice('manual-adjustment:'.length)}`
+                      : {
+                          completion: 'Taak of routine voltooid',
+                          'completion-undone': 'Voltooiing ongedaan gemaakt',
+                          'reward-redemption': 'Beloning goedgekeurd',
+                          'game-purchase': 'Spelsessie gekocht'
+                        }[t.reason] || t.reason
                 )} <strong class="${t.amount < 0 ? 'negative' : ''}">${t.amount > 0 ? '+' : ''}${t.amount}</strong><small>${fmt(
                   new Date(t.created_at.replace(' ', 'T') + 'Z'),
                   {
@@ -95,7 +100,15 @@ export async function requestReward(rewardId, button) {
 }
 export function rewardAdminMarkup() {
   const pending = state.data.reward_requests.filter((r) => r.status === 'pending');
-  return `<section class="settings-section"><h3>Beloningen</h3><p>Voltooide taken en volledig afgeronde routines boeken punten automatisch. Routinepunten worden één keer toegekend, niet per stap.</p><div class="list">${state.data.rewards.map((r) => `<div class="history-item"><strong>${esc(r.icon)} ${esc(r.title)}</strong> · ${r.price} punten<button class="secondary small" data-reward-edit="${r.id}">${icon('edit')}Bewerken</button></div>`).join('') || '<p class="muted">Nog geen beloningen ingesteld.</p>'}</div><button type="button" class="secondary" data-reward-new>${icon('plus')}Beloning toevoegen</button><h3 style="margin-top:22px">Openstaande aanvragen</h3>${pending.map((r) => `<div class="history-item"><strong>${esc(r.member_name)}</strong> vraagt ${esc(r.reward_name)} aan · ${r.cost} punten<div class="inline"><button type="button" class="primary small" data-reward-decision="approve" data-request-id="${r.id}">Goedkeuren</button><button type="button" class="secondary small" data-reward-decision="reject" data-request-id="${r.id}">Afwijzen</button></div></div>`).join('') || '<p class="muted">Geen openstaande aanvragen.</p>'}</section>`;
+  const rewards = state.data.rewards.length
+    ? `<table class="reward-admin-table" aria-label="Beloningen en puntenprijzen"><thead><tr><th scope="col">Beloning</th><th scope="col">Prijs</th><th scope="col">Actie</th></tr></thead><tbody>${state.data.rewards
+        .map(
+          (r) =>
+            `<tr><th scope="row"><span class="reward-admin-name"><span>${esc(r.icon)}</span><span>${esc(r.title)}</span></span></th><td class="reward-admin-price">${r.price} punten</td><td><button type="button" class="secondary small" data-reward-edit="${r.id}">${icon('edit')}Bewerken</button></td></tr>`
+        )
+        .join('')}</tbody></table>`
+    : '<p class="muted">Nog geen beloningen ingesteld.</p>';
+  return `<section class="settings-section"><h3>Beloningen</h3><p>Voltooide taken en volledig afgeronde routines boeken punten automatisch. Routinepunten worden één keer toegekend, niet per stap.</p>${rewards}<button type="button" class="secondary reward-admin-add" data-reward-new>${icon('plus')}Beloning toevoegen</button><h3 style="margin-top:22px">Openstaande aanvragen</h3>${pending.map((r) => `<div class="history-item"><strong>${esc(r.member_name)}</strong> vraagt ${esc(r.reward_name)} aan · ${r.cost} punten<div class="inline"><button type="button" class="primary small" data-reward-decision="approve" data-request-id="${r.id}">Goedkeuren</button><button type="button" class="secondary small" data-reward-decision="reject" data-request-id="${r.id}">Afwijzen</button></div></div>`).join('') || '<p class="muted">Geen openstaande aanvragen.</p>'}</section>`;
 }
 export function bindRewardAdmin() {
   $('#edit-form').insertAdjacentHTML('beforebegin', rewardAdminMarkup());

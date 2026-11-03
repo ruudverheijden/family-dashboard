@@ -12,9 +12,19 @@ from .auth import admin
 from .db import settings
 from .integrations import caldav, immich
 from .integrations.common import EndpointChanged, endpoint_secret, log_failure, valid_url
-from .schemas import Login, Mutation, RewardDecisionInput, RewardRequestInput
-from .services import dashboard, entities, rewards
+from .schemas import (
+    GameActionInput,
+    GamePriceInput,
+    GamePurchaseInput,
+    Login,
+    Mutation,
+    PointAdjustmentInput,
+    RewardDecisionInput,
+    RewardRequestInput,
+)
+from .services import dashboard, entities, games, rewards
 from .services import settings as configuration
+from .services.points import adjust_points
 from .validation import _uuid
 
 router = APIRouter()
@@ -59,6 +69,11 @@ def request_reward(body: RewardRequestInput, rt=Depends(runtime)):
 )
 def decide_reward_request(reward_request_id: str, body: RewardDecisionInput, rt=Depends(runtime)):
     return rewards.decide_reward_request(reward_request_id, body, rt.database)
+
+
+@router.post("/api/admin/points/adjustments", dependencies=[Depends(admin)])
+def adjust_member_points(body: PointAdjustmentInput, rt=Depends(runtime)):
+    return adjust_points(body, rt.database)
 
 
 @router.get("/api/history")
@@ -180,4 +195,24 @@ def get_photo(asset_id: str, rt=Depends(runtime)):
 def health(rt=Depends(runtime)):
     with rt.database.connect() as db:
         db.execute("SELECT 1").fetchone()
-    return {"status": "ok", "version": "0.2.1"}
+    return {"status": "ok", "version": "0.3.0"}
+
+
+@router.post("/api/admin/games/{game_id}", dependencies=[Depends(admin)])
+def configure_game(game_id: str, body: GamePriceInput, rt=Depends(runtime)):
+    return games.configure(game_id, body, rt.database)
+
+
+@router.post("/api/games/{game_id}/sessions")
+def purchase_game(game_id: str, body: GamePurchaseInput, rt=Depends(runtime)):
+    return games.purchase(game_id, body, rt.database, rt.photos)
+
+
+@router.get("/api/game-sessions/{session_id}")
+def get_game_session(session_id: str, rt=Depends(runtime)):
+    return games.get_session(session_id, rt.database)
+
+
+@router.post("/api/game-sessions/{session_id}/actions")
+def play_game(session_id: str, body: GameActionInput, rt=Depends(runtime)):
+    return games.play(session_id, body, rt.database)

@@ -1,9 +1,12 @@
-"""Point ledger. Call within the execution mutation transaction."""
+"""Point ledger operations."""
 
+import hashlib
 import json
 import uuid
 
 from ..db import entities
+from ..errors import DomainError
+from ..validation import _uuid
 
 
 def point_balances(db):
@@ -25,6 +28,65 @@ def point_balances(db):
     for balance in balances.values():
         balance["available"] = balance["balance"] - balance["reserved"]
     return balances
+
+
+def adjust_points(body, database):
+    if not _uuid(body.member_id):
+        raise DomainError(422, "Ongeldig gezinslid.")
+    reason = body.reason.strip()
+    if body.amount == 0:
+        raise DomainError(422, "De correctie mag niet nul punten zijn.")
+
+    payload = body.model_dump() | {"reason": reason}
+    fingerprint = hashlib.sha256(
+        json.dumps({"kind": "points-adjustment", **payload}, sort_keys=True).encode()
+    ).hexdigest()
+    with database.connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        previous = db.execute("SELECT * FROM requests WHERE id=?", (body.request_id,)).fetchone()
+        if previous:
+            if previous["fingerprint"] != fingerprint:
+                raise DomainError(409, "Verzoeknummer is al gebruikt.")
+            return json.loads(previous["response"])
+
+        member = next(
+            (item for item in entities(db, "members") if item["id"] == body.member_id), None
+        )
+        if not member:
+            raise DomainError(404, "Gezinslid niet gevonden.")
+
+        balance = point_balances(db)[body.member_id]
+        if balance["available"] + body.amount < 0:
+            raise DomainError(
+                409,
+                "De correctie kan niet lager zijn dan de voor beloningen gereserveerde punten.",
+            )
+
+        transaction_id = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO point_transactions
+               (id,member_id,amount,reason,source_key,related_id)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                transaction_id,
+                body.member_id,
+                body.amount,
+                f"manual-adjustment:{reason}" if reason else "manual-adjustment",
+                f"points-adjustment:{body.request_id}",
+                body.member_id,
+            ),
+        )
+        result = {
+            "ok": True,
+            "id": transaction_id,
+            "balance": balance["balance"] + body.amount,
+            "available": balance["available"] + body.amount,
+        }
+        db.execute(
+            "INSERT INTO requests VALUES (?,?,?)",
+            (body.request_id, fingerprint, json.dumps(result)),
+        )
+        return result
 
 
 def completion_members(run, template):

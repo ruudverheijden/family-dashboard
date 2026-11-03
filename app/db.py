@@ -29,7 +29,7 @@ def init(data_dir=None):
     with connect(data_dir) as db:
         db.execute("PRAGMA journal_mode=WAL")
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 2:
+        if version > 3:
             raise RuntimeError("Database is nieuwer dan deze applicatie")
         db.executescript("""
         CREATE TABLE IF NOT EXISTS entities (kind TEXT, id TEXT, version INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(kind,id));
@@ -68,7 +68,16 @@ def init(data_dir=None):
             resolved_at TEXT
         );
         CREATE INDEX IF NOT EXISTS reward_requests_status ON reward_requests(status, created_at);
-        PRAGMA user_version=2;
+        CREATE TABLE IF NOT EXISTS game_settings (
+            id TEXT PRIMARY KEY, price INTEGER NOT NULL CHECK(price > 0), version INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS game_sessions (
+            id TEXT PRIMARY KEY, game_id TEXT NOT NULL, member_id TEXT NOT NULL,
+            cost INTEGER NOT NULL, expires_at REAL NOT NULL, status TEXT NOT NULL,
+            version INTEGER NOT NULL, body TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS game_sessions_active ON game_sessions(status, expires_at);
+        PRAGMA user_version=3;
         """)
         db.execute(
             "INSERT OR IGNORE INTO settings VALUES (1,1,?)",

@@ -201,7 +201,8 @@ export function calendarShell() {
   const datebar = `<div class="toolbar planner-datebar">${dateNav(state.sub === 'agenda' ? (state.view === 'day' ? 'day' : state.view) : 'day')}${state.sub === 'agenda' ? `<div class="segmented" role="group" aria-label="Agendaweergave"><button data-view="day" class="${state.view === 'day' ? 'active' : ''}" aria-pressed="${state.view === 'day'}">Dag</button><button data-view="three-day" class="${state.view === 'three-day' ? 'active' : ''}" aria-pressed="${state.view === 'three-day'}">3 dagen</button><button data-view="week" class="${state.view === 'week' ? 'active' : ''}" aria-pressed="${state.view === 'week'}">Week</button></div>` : ''}</div>`;
   const guide = !state.data.members.length
     ? `<section class="setup-guide"><div><h2>Begin met jullie gezin</h2><p>Voeg gezinsleden toe. Daarna kun je samen taken plannen.</p></div><div class="setup-actions"><button class="primary" data-action="admin">${icon('plus')}Gezin instellen</button><button class="secondary small" data-action="admin">CalDAV koppelen (optioneel)</button></div></section>`
-    : !state.data.tasks.some((task) => !task.archived)
+    : !state.data.tasks.some((task) => !task.archived) &&
+        !state.data.routines.some((routine) => !routine.archived)
       ? `<section class="setup-guide"><div><h2>Jullie agenda is klaar voor de eerste plannen</h2><p>Voeg een taak toe; die verschijnt vanzelf op de geplande dag. CalDAV is optioneel voor privéafspraken.</p></div><div class="setup-actions"><button class="primary" data-new="tasks">${icon('plus')}Eerste taak toevoegen</button><button class="secondary small" data-action="admin">CalDAV koppelen (optioneel)</button></div></section>`
       : '';
   return `${datebar}<div class="calendar-layout"><section class="family-filter panel" aria-label="Gezinsfilter"><h2 class="section-label">Ons gezin</h2><div class="family-list" role="group" aria-label="Filter agenda op gezinslid"><button class="person ${!state.member ? 'active' : ''}" data-member="" aria-pressed="${!state.member}"><span class="avatar">${icon('people')}</span>Iedereen${!state.member ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>${state.data.members.map((m) => `<button class="person ${state.member === m.id ? 'active' : ''}" data-member="${m.id}" aria-pressed="${state.member === m.id}">${avatar(m)}${esc(m.name)}${state.member === m.id ? '<span class="checkmark" aria-hidden="true">✓</span>' : ''}</button>`).join('')}</div></section>${guide}<section class="workspace"><nav class="subnav" aria-label="Gezinsplanner">${[
@@ -279,6 +280,19 @@ export function agendaTaskCard(r) {
     r.member === 'shared' ? task.members.map(personName).join(', ') : personName(r.member);
   return `<article class="agenda-task ${r.done.length ? 'done' : ''}"><button class="checkbox ${r.done.length ? 'done' : ''}" data-run="${r.id}" data-step="0" aria-label="${r.done.length ? 'Heropen' : 'Voltooi'} ${esc(task.title)}" aria-pressed="${!!r.done.length}">${icon('check')}</button><div class="agenda-task-copy"><strong>${esc(task.icon)} ${esc(task.title)}</strong><small>${esc(owners)}</small></div></article>`;
 }
+export function agendaRoutineCard(group, className = '', position = '') {
+  const run = group[0],
+    routine = run.body;
+  const done = group.every((item) => item.done.length === item.body.steps.length);
+  const progress = group
+    .map(
+      (item) =>
+        `${personName(item.member)} · ${item.done.length} van ${item.body.steps.length} klaar`
+    )
+    .join(' / ');
+  const date = fmt(parseDay(run.day), { weekday: 'long', day: 'numeric', month: 'long' });
+  return `<button type="button" class="agenda-routine ${className} ${done ? 'done' : ''}" data-open-routine="${run.template_id}" data-routine-day="${run.day}" data-routine-run="${run.id}" style="${position}" aria-haspopup="dialog" aria-controls="routine-dialog" aria-label="Open routine ${esc(routine.title)} op ${esc(date)}. ${esc(progress)}${done ? '. Klaar' : ''}" title="${esc(routine.title)} · ${esc(routineTime(routine))} · ${esc(progress)}"><span class="agenda-routine-meta"><span class="agenda-routine-kind">${icon(done ? 'check' : 'routine')}Routine${done ? ' · Klaar' : ''}</span><time>${esc(routineTime(routine))}</time></span><strong>${esc(routine.icon)} ${esc(routine.title)}</strong><small>${esc(progress)}</small><span class="agenda-routine-open">Open routine ${icon('right')}</span></button>`;
+}
 export function eventLocalParts(value) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: state.data.config.timezone,
@@ -316,6 +330,14 @@ export function timedEventsForDay(date) {
         end: to
       });
   }
+  for (const group of routineGroups(runsFor(date, 'routines'))) {
+    const routine = group[0].body;
+    if (!routine.start_time || !routine.end_time) continue;
+    const minutes = (time) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+    const start = minutes(routine.start_time);
+    const end = minutes(routine.end_time);
+    timed.push({ group, start, end: Math.max(end, start + 48) });
+  }
   timed.sort((a, b) => a.start - b.start || a.end - b.end);
   let group = [],
     groupEnd = -1;
@@ -342,10 +364,12 @@ export function timedEventsForDay(date) {
   }
   if (group.length) positionGroup(group);
   return {
-    timed: timed.map(
-      (item) =>
-        `<article class="event timed-event" style="--event-top:${item.start - visibleStart}px;--event-height:${item.end - item.start}px;--event-left:${(item.lane / item.laneCount) * 100}%;--event-width:${100 / item.laneCount}%;${eventStyle(item.event)}">${eventContents(item.event)}</article>`
-    )
+    timed: timed.map((item) => {
+      const position = `--event-top:${item.start - visibleStart}px;--event-height:${item.end - item.start}px;--event-left:${(item.lane / item.laneCount) * 100}%;--event-width:${100 / item.laneCount}%;`;
+      return item.group
+        ? agendaRoutineCard(item.group, 'timed-event', position)
+        : `<article class="event timed-event" style="${position}${eventStyle(item.event)}">${eventContents(item.event)}</article>`;
+    })
   };
 }
 export function eventStyle(e) {
@@ -419,6 +443,14 @@ export function agendaView() {
         }</section>`
     )
     .join('');
+  const untimedGroups = days.map((day) =>
+    routineGroups(runsFor(day, 'routines')).filter(
+      (group) => !group[0].body.start_time || !group[0].body.end_time
+    )
+  );
+  const routineRow = untimedGroups.some((groups) => groups.length)
+    ? `<div class="calendar-row calendar-routine-row"><div class="calendar-row-label">Routines</div>${untimedGroups.map((groups) => `<div class="calendar-special-cell">${groups.map((group) => agendaRoutineCard(group)).join('')}</div>`).join('')}</div>`
+    : '';
   const dailyEvents = days.map((d) => ({
     date: d,
     allDay: eventsFor(d).filter((e) => e.all_day),
@@ -449,7 +481,7 @@ export function agendaView() {
   const currentTime = days.includes(today())
     ? `<div class="current-time-indicator" role="img" aria-label="Huidige tijd" style="--current-time-top:${eventLocalParts(new Date().toISOString()).minutes}px"></div>`
     : '';
-  return `<div class="calendar timetable-calendar ${state.view === 'day' ? 'day-view' : ''} ${state.view === 'three-day' ? 'three-day-view' : ''}" style="--calendar-columns:${columns};--calendar-days:${days.length}" aria-label="${state.view === 'week' ? 'Weekagenda' : state.view === 'three-day' ? '3-daagse agenda' : 'Dagagenda'}"><div class="calendar-row calendar-day-headings"><div class="calendar-row-label"></div>${dayHeaders}</div><div class="calendar-row calendar-task-row"><div class="calendar-row-label">Taken</div>${taskCells}</div>${allDayRow}<div class="calendar-time-scroll" data-days="${days.join(',')}" tabindex="0" aria-label="Tijdlijn, scroll verticaal om andere tijden te bekijken"><div class="calendar-schedule-row"><div class="calendar-time-axis">${hours}</div><div class="calendar-day-schedules">${schedules}${currentTime}</div></div></div></div><div class="bottom-grid"><section class="panel"><div class="card-title"><h2>Te doen op ${fmt(
+  return `<div class="calendar timetable-calendar ${state.view === 'day' ? 'day-view' : ''} ${state.view === 'three-day' ? 'three-day-view' : ''}" style="--calendar-columns:${columns};--calendar-days:${days.length}" aria-label="${state.view === 'week' ? 'Weekagenda' : state.view === 'three-day' ? '3-daagse agenda' : 'Dagagenda'}"><div class="calendar-row calendar-day-headings"><div class="calendar-row-label"></div>${dayHeaders}</div><div class="calendar-row calendar-task-row"><div class="calendar-row-label">Taken</div>${taskCells}</div>${routineRow}${allDayRow}<div class="calendar-time-scroll" data-days="${days.join(',')}" tabindex="0" aria-label="Tijdlijn, scroll verticaal om andere tijden te bekijken"><div class="calendar-schedule-row"><div class="calendar-time-axis">${hours}</div><div class="calendar-day-schedules">${schedules}${currentTime}</div></div></div></div><div class="bottom-grid"><section class="panel"><div class="card-title"><h2>Te doen op ${fmt(
     parseDay(state.day),
     {
       day: 'numeric',
@@ -490,69 +522,73 @@ export function tasksView() {
   const runs = filteredRuns('tasks');
   return `<div class="toolbar"><button class="primary" data-new="tasks">${icon('plus')}Nieuwe taak</button></div><div class="list">${runs.map(taskRow).join('') || empty('Kleine taken, samen gedaan.', 'Voeg een eenmalige of terugkerende taak toe. Ieder gezinslid kan een eigen uitvoering krijgen.', 'tasks', `<button class="primary" data-new="tasks">${icon('plus')}Eerste taak toevoegen</button>`)}</div><div class="toolbar" style="margin-top:20px"><button class="subtle-button" data-action="templates-tasks">Taaksjablonen beheren</button><button class="subtle-button" data-action="history">${icon('history')}Historie bekijken</button></div>`;
 }
+export function routineGroups(runs) {
+  const groups = new Map();
+  for (const run of runs) {
+    // A started execution can retain an older snapshot than another person's plan.
+    const key = `${run.template_id}:${JSON.stringify(run.body)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(run);
+  }
+  return [...groups.values()];
+}
+export function routineTime(routine) {
+  return routine.start_time && routine.end_time
+    ? `${routine.start_time}–${routine.end_time}`
+    : 'Zonder tijdvenster';
+}
+export function routineDetailCard(group, editable = true) {
+  const routine = group[0].body;
+  const progress = group
+    .map(
+      (r) =>
+        `<div class="routine-member-progress">${avatar(person(r.member))}<span>${esc(personName(r.member))} · ${r.done.length} van ${r.body.steps.length} stappen klaar</span><div class="progress" aria-label="${r.done.length} van ${r.body.steps.length} stappen voltooid"><span style="width:${(r.done.length / r.body.steps.length) * 100}%"></span></div></div>`
+    )
+    .join('');
+  const steps = routine.steps
+    .map((s, i) => {
+      const complete = group.every((r) => r.done.includes(i));
+      const controls = group
+        .map(
+          (r) =>
+            `<span class="routine-step-owner" title="${esc(personName(r.member))}">${avatar(person(r.member))}<button class="checkbox ${r.done.includes(i) ? 'done' : ''}" data-run="${r.id}" data-step="${i}" aria-label="${r.done.includes(i) ? 'Heropen' : 'Voltooi'} ${esc(s.text)} voor ${esc(personName(r.member))}" aria-pressed="${r.done.includes(i)}">${icon('check')}</button></span>`
+        )
+        .join('');
+      return `<div class="step ${complete ? 'done' : ''}"><span class="routine-step-label">${esc(s.icon)} ${esc(s.text)}</span><div class="routine-step-controls">${controls}</div></div>`;
+    })
+    .join('');
+  return `<section class="panel"><div class="routine-header"><div><h2>${esc(routine.icon)} ${esc(routine.title)}</h2><small>${esc(group.map((r) => personName(r.member)).join(', '))} · ${esc(routineTime(routine))}</small></div>${editable ? `<button data-edit="routines:${group[0].template_id}" aria-label="Routine bewerken">${icon('edit')}</button>` : ''}</div><div class="routine-member-progress-list">${progress}</div>${steps}</section>`;
+}
+function nextRoutineDay(templates) {
+  const dates = templates.flatMap((routine) => {
+    if (!routine.members.length || !routine.weekdays.length) return [];
+    const start = routine.date > state.day ? routine.date : plusDay(state.day, 1);
+    for (let offset = 0; offset < 7; offset++) {
+      const day = plusDay(start, offset);
+      if (
+        day <= plusDay(today(), 730) &&
+        routine.weekdays.includes((parseDay(day).getDay() + 6) % 7)
+      )
+        return [day];
+    }
+    return [];
+  });
+  return dates.sort()[0];
+}
 export function routinesView() {
   const runs = filteredRuns('routines');
   const templates = state.data.routines.filter(
-    (r) => !r.archived && (!state.member || r.members.includes(state.member))
+    (routine) => !routine.archived && (!state.member || routine.members.includes(state.member))
   );
-  const runsByTemplate = new Map();
-  runs.forEach((run) => {
-    if (!runsByTemplate.has(run.template_id)) runsByTemplate.set(run.template_id, []);
-    runsByTemplate.get(run.template_id).push(run);
-  });
+  const nextDay = nextRoutineDay(templates);
+  const nextLabel =
+    nextDay && fmt(parseDay(nextDay), { weekday: 'long', day: 'numeric', month: 'long' });
   const cards = runs.length
-    ? [...runsByTemplate.values()]
-        .map((group) => {
-          const routine = group[0].body;
-          const progress = group
-            .map(
-              (r) =>
-                `<div class="routine-member-progress">${avatar(person(r.member))}<span>${esc(personName(r.member))} · ${r.done.length} van ${r.body.steps.length} stappen klaar</span><div class="progress" aria-label="${r.done.length} van ${r.body.steps.length} stappen voltooid"><span style="width:${(r.done.length / r.body.steps.length) * 100}%"></span></div></div>`
-            )
-            .join('');
-          const steps = routine.steps
-            .map((s, i) => {
-              const complete = group.every((r) => r.done.includes(i));
-              const controls = group
-                .map(
-                  (r) =>
-                    `<span class="routine-step-owner" title="${esc(personName(r.member))}">${avatar(person(r.member))}<button class="checkbox ${r.done.includes(i) ? 'done' : ''}" data-run="${r.id}" data-step="${i}" aria-label="${r.done.includes(i) ? 'Heropen' : 'Voltooi'} ${esc(s.text)} voor ${esc(personName(r.member))}" aria-pressed="${r.done.includes(i)}">${icon('check')}</button></span>`
-                )
-                .join('');
-              return `<div class="step ${complete ? 'done' : ''}"><span class="routine-step-label">${esc(s.icon)} ${esc(s.text)}</span><div class="routine-step-controls">${controls}</div></div>`;
-            })
-            .join('');
-          return `<section class="panel"><div class="routine-header"><div><h2>${esc(routine.icon)} ${esc(routine.title)}</h2><small>${esc(group.map((r) => personName(r.member)).join(', '))} · ${esc(routine.start_time)} – ${esc(routine.end_time)}</small></div><button data-edit="routines:${group[0].template_id}" aria-label="Routine bewerken">${icon('edit')}</button></div><div class="routine-member-progress-list">${progress}</div>${steps}</section>`;
-        })
+    ? routineGroups(runs)
+        .map((group) => routineDetailCard(group))
         .join('')
-    : templates.length
-      ? `<section class="panel"><h2>Geen routine gepland op ${esc(
-          fmt(parseDay(state.day), {
-            weekday: 'long'
-          })
-        )}</h2><p>Hieronder staan de actieve routines op hun ingeplande dagen.</p></section>${templates
-          .map(
-            (r) =>
-              `<section class="panel routine-preview"><div class="routine-header"><div><h2>${esc(r.icon)} ${esc(r.title)}</h2><small>${esc(r.members.map(personName).join(', '))} · ${esc(r.start_time)} – ${esc(r.end_time)}</small></div><button data-edit="routines:${r.id}" aria-label="Routine bewerken">${icon('edit')}</button></div><p class="small muted">Gepland: ${esc(weekdayNames.filter((_, i) => r.weekdays.includes(i)).join(', '))}${
-                r.date > state.day
-                  ? ` · Startdatum: ${esc(
-                      fmt(parseDay(r.date), {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long'
-                      })
-                    )}`
-                  : ''
-              }</p>${r.steps.map((s) => `<div class="step"><span>${esc(s.icon)} ${esc(s.text)}</span></div>`).join('')}</section>`
-          )
-          .join('')}`
-      : empty(
-          'Een fijn ritme voor elke dag.',
-          'Maak een ochtend- of avondroutine met stappen, gezinsleden en vaste weekdagen.',
-          'routine',
-          `<button class="primary" data-new="routines">${icon('plus')}Eerste routine maken</button>`
-        );
-  return `<div class="toolbar"><button class="primary" data-new="routines">${icon('plus')}Nieuwe routine</button></div><div class="routine-grid">${cards}</div><div class="toolbar" style="margin-top:20px"><button class="subtle-button" data-action="templates-routines">Routinesjablonen beheren</button><button class="subtle-button" data-action="history">${icon('history')}Historie bekijken</button></div>`;
+    : `<section class="panel routine-empty"><h2>Geen routines op ${esc(fmt(parseDay(state.day), { weekday: 'long', day: 'numeric', month: 'long' }))}</h2><p>${nextDay ? `De volgende routines staan gepland op ${esc(nextLabel)}.` : 'Er zijn geen volgende routines gepland voor deze selectie.'}</p>${nextDay ? `<button class="primary" data-day="${nextDay}">Bekijk ${esc(nextLabel)}</button>` : `<button class="primary" data-new="routines">${icon('plus')}Routine maken</button>`}</section>`;
+  return `<div class="toolbar"><button class="primary" data-new="routines">${icon('plus')}Nieuwe routine</button></div><div class="routine-grid">${cards}</div><div class="toolbar" style="margin-top:20px"><button class="subtle-button" data-action="templates-routines">Routines beheren</button><button class="subtle-button" data-action="history">${icon('history')}Historie bekijken</button></div>`;
 }
 export function syncClockToAgendaBlock() {
   const brandmark = $('.brandmark');

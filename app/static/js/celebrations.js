@@ -1,3 +1,86 @@
+let completionAudio;
+let supersonicAudioBuffer;
+let supersonicAudioLoad;
+
+export function prepareCompletionSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return Promise.resolve(false);
+  try {
+    completionAudio ||= new AudioContextClass();
+    if (completionAudio.state !== 'suspended')
+      return Promise.resolve(completionAudio.state === 'running');
+    return completionAudio
+      .resume()
+      .then(() => completionAudio.state === 'running')
+      .catch((error) => {
+        console.error('Het voltooid-geluid kon niet worden gestart.', error);
+        return false;
+      });
+  } catch (error) {
+    console.error('Het voltooid-geluid kon niet worden voorbereid.', error);
+    return Promise.resolve(false);
+  }
+}
+
+export function playCompletionSound() {
+  if (!completionAudio || completionAudio.state !== 'running') return;
+  try {
+    const notes = [659.25, 830.61, 987.77];
+    const start = completionAudio.currentTime;
+    for (const [index, frequency] of notes.entries()) {
+      const oscillator = completionAudio.createOscillator();
+      const gain = completionAudio.createGain();
+      const noteStart = start + index * 0.09;
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, noteStart);
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.07, noteStart + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.22);
+      oscillator.connect(gain).connect(completionAudio.destination);
+      oscillator.start(noteStart);
+      oscillator.stop(noteStart + 0.23);
+    }
+  } catch (error) {
+    console.error('Het voltooid-geluid kon niet worden afgespeeld.', error);
+  }
+}
+
+export function prepareSupersonicCompletionSound() {
+  if (!completionAudio) return Promise.resolve(false);
+  if (supersonicAudioBuffer) return Promise.resolve(true);
+  supersonicAudioLoad ||= fetch('/static/audio/routine-success-6297.mp3')
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then((audioData) => completionAudio.decodeAudioData(audioData))
+    .then((buffer) => {
+      supersonicAudioBuffer = buffer;
+      return true;
+    })
+    .catch((error) => {
+      supersonicAudioLoad = null;
+      console.error('Het supersonische voltooid-geluid kon niet worden geladen.', error);
+      return false;
+    });
+  return supersonicAudioLoad;
+}
+
+export function playSupersonicCompletionSound() {
+  if (!completionAudio || completionAudio.state !== 'running') return;
+  if (!supersonicAudioBuffer) return;
+  try {
+    const source = completionAudio.createBufferSource();
+    const gain = completionAudio.createGain();
+    source.buffer = supersonicAudioBuffer;
+    gain.gain.setValueAtTime(0.35, completionAudio.currentTime);
+    source.connect(gain).connect(completionAudio.destination);
+    source.start();
+  } catch (error) {
+    console.error('Het supersonische voltooid-geluid kon niet worden afgespeeld.', error);
+  }
+}
+
 export function celebrateTaskCompletion(button) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const bounds = button.getBoundingClientRect(),
@@ -89,15 +172,22 @@ export const routineCelebrationMessages = [
   'Wat mag je trots zijn'
 ];
 export let previousRoutineCelebrationMessage = -1;
-export function celebrateRoutineCompletion(memberName) {
+export function celebrateRoutineCompletion(
+  memberName,
+  container = document.body,
+  customVariant = null,
+  onDismiss = () => {}
+) {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const previous = document.querySelector('.routine-celebration');
   if (previous) {
+    previous.dismiss?.();
     clearTimeout(previous.dismissTimer);
     previous.remove();
   }
-  const variant = routineCelebrationVariants[routineCelebrationIndex];
-  routineCelebrationIndex = (routineCelebrationIndex + 1) % routineCelebrationVariants.length;
+  const variant = customVariant || routineCelebrationVariants[routineCelebrationIndex];
+  if (!customVariant)
+    routineCelebrationIndex = (routineCelebrationIndex + 1) % routineCelebrationVariants.length;
   const overlay = document.createElement('div');
   overlay.className = 'routine-celebration';
   overlay.dataset.variant = variant.id;
@@ -143,12 +233,18 @@ export function celebrateRoutineCompletion(memberName) {
   close.type = 'button';
   close.textContent = 'Verder';
   close.setAttribute('aria-label', 'Viering sluiten');
+  let dismissed = false;
   const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
     clearTimeout(overlay.dismissTimer);
     overlay.remove();
+    onDismiss();
   };
+  overlay.dismiss = dismiss;
   close.addEventListener('click', dismiss);
   overlay.append(icons, message, close);
-  document.body.append(overlay);
-  overlay.dismissTimer = setTimeout(() => overlay.remove(), 4600);
+  container.append(overlay);
+  overlay.dismissTimer = setTimeout(dismiss, 4600);
+  return dismiss;
 }

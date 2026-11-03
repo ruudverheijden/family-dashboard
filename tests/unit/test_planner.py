@@ -70,6 +70,8 @@ def test_shared_task_archiving_and_member_deduplication(validate):
         ("routines", {"steps": ["Opstaan"]}),
         ("routines", {"steps": [{"text": "  "}]}),
         ("routines", {"start_time": "24:00"}),
+        ("routines", {"start_time": ""}),
+        ("routines", {"end_time": ""}),
         ("routines", {"end_time": "07:00"}),
         ("routines", {"end_time": "06:59"}),
     ],
@@ -92,3 +94,10 @@ def test_inclusive_limits_and_step_order(validate):
     steps = [{"text": f"  Stap {i} "} for i in range(30)]
     routine = validate("routines", steps=steps, start_time="00:00", end_time="23:59")
     assert [s["text"] for s in routine["steps"]] == [f"Stap {i}" for i in range(30)]
+
+
+def test_routine_without_time_window_still_follows_weekdays(validate):
+    routine = validate("routines", start_time="", end_time="")
+    assert routine["start_time"] == routine["end_time"] == ""
+    assert planner.scheduled_members("routines", routine, "2024-02-29") == ["alex"]
+    assert planner.scheduled_members("routines", routine, "2024-03-01") == []

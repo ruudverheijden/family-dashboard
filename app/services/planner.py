@@ -1,4 +1,4 @@
-"""Scheduling and immutable execution snapshots."""
+"""Scheduling, future routine plans and protected execution snapshots."""
 
 import json
 import uuid
@@ -6,6 +6,38 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from ..db import entities, settings
+
+# A reopened execution still has history and must never become an editable plan again.
+_UNSTARTED = """
+    r.done='[]'
+    AND NOT EXISTS (SELECT 1 FROM history h WHERE h.kind='runs' AND h.entity_id=r.id)
+    AND NOT EXISTS (SELECT 1 FROM point_transactions p WHERE p.related_id=r.id)
+"""
+
+
+def current_day(db):
+    return datetime.now(ZoneInfo(settings(db)["timezone"])).date().isoformat()
+
+
+def refresh_future_routines(db):
+    """Keep untouched future routine plans current, using the caller's transaction."""
+    templates = {routine["id"]: routine for routine in entities(db, "routines")}
+    rows = db.execute(
+        f"SELECT r.* FROM runs r WHERE r.kind='routines' AND r.day>? AND {_UNSTARTED}",
+        (current_day(db),),
+    ).fetchall()
+    for row in rows:
+        template = templates.get(row["template_id"])
+        if (
+            template
+            and row["member"] in scheduled_members("routines", template, row["day"])
+            and json.loads(row["body"]) != template
+        ):
+            # Invalidate old open browser cards before their step indices can be applied.
+            db.execute(
+                "UPDATE runs SET body=?,version=version+1 WHERE id=?",
+                (json.dumps(template), row["id"]),
+            )
 
 
 def scheduled_members(kind, template, day):
@@ -61,15 +93,30 @@ def catch_up(db):
                 (template["id"], today.isoformat()),
             )
 
+    refresh_future_routines(db)
+
 
 def read_runs(db, start_day, end_day=None):
     end_day = end_day or start_day
     runs = [
         {**dict(r), "body": json.loads(r["body"]), "done": json.loads(r["done"])}
         for r in db.execute(
-            "SELECT * FROM runs WHERE day BETWEEN ? AND ? ORDER BY day,rowid", (start_day, end_day)
+            f"""SELECT r.*, (r.kind='routines' AND r.day>? AND {_UNSTARTED}) AS follows_plan
+                FROM runs r WHERE r.day BETWEEN ? AND ? ORDER BY r.day,r.rowid""",
+            (current_day(db), start_day, end_day),
         )
     ]
+    routine_templates = {routine["id"]: routine for routine in entities(db, "routines")}
+    active_runs = []
+    for run in runs:
+        follows_plan = run.pop("follows_plan")
+        template = routine_templates.get(run["template_id"])
+        if follows_plan and (
+            not template or run["member"] not in scheduled_members("routines", template, run["day"])
+        ):
+            continue
+        active_runs.append(run)
+    runs = active_runs
     task_modes = {task["id"]: task["mode"] for task in entities(db, "tasks")}
     replacements = {
         (run["template_id"], run["day"])

@@ -5,6 +5,7 @@ import { icon } from './icons.js';
 import { $, avatar, esc, person, selected, uuid } from './helpers.js';
 import { applyTheme } from './shell.js';
 import { actions } from './actions.js';
+import { bindGameAdmin } from './games/index.js';
 import { bindRewardAdmin } from './rewards.js';
 
 export async function openAdmin() {
@@ -41,6 +42,95 @@ export async function openAdmin() {
     };
   }
 }
+
+function adjustMemberPoints(memberId) {
+  const member = person(memberId);
+  if (!member) return;
+  let balance = state.data.balances[memberId] || {
+    balance: 0,
+    reserved: 0,
+    available: 0
+  };
+  modal(
+    `Puntensaldo aanpassen · ${esc(member.name)}`,
+    `<p class="notice">Boek een correctie bij of af. Je kunt optioneel een reden toevoegen aan de transactiehistorie. Gereserveerde punten voor openstaande beloningen blijven beschermd.</p><form id="points-adjustment-form"><div class="point-adjustment-balance"><span>Huidig totaal <strong>${balance.balance}</strong></span><span>Gereserveerd <strong>${balance.reserved}</strong></span><span>Beschikbaar <strong>${balance.available}</strong></span></div><div class="form-grid">${field('Correctie in punten (+ of −)', 'amount', '', 'number', 'min="-100000" max="100000" step="1" required')}<label class="full">Reden (optioneel)<textarea name="reason" maxlength="200"></textarea></label></div><p id="points-adjustment-preview" class="notice" role="status"></p><div class="form-actions"><button type="submit" class="primary">Correctie opslaan</button></div></form>`
+  );
+  const form = $('#points-adjustment-form'),
+    amountInput = form.elements.amount,
+    preview = $('#points-adjustment-preview'),
+    submit = form.querySelector('[type="submit"]');
+  let retryPayload = '',
+    retryId = '';
+  const updatePreview = () => {
+    const amount = Number(amountInput.value);
+    if (!amountInput.value || !Number.isInteger(amount) || amount === 0) {
+      preview.textContent = 'Vul een positief of negatief geheel aantal punten in.';
+      submit.disabled = true;
+      return;
+    }
+    const nextBalance = balance.balance + amount,
+      nextAvailable = balance.available + amount;
+    if (nextAvailable < 0) {
+      preview.textContent =
+        'Deze verlaging is te groot: er blijven dan te weinig punten over voor openstaande aanvragen.';
+      submit.disabled = true;
+      return;
+    }
+    preview.textContent = `Na correctie: ${nextBalance} totaal · ${balance.reserved} gereserveerd · ${nextAvailable} beschikbaar.`;
+    submit.disabled = false;
+  };
+  form.addEventListener('input', updatePreview);
+  updatePreview();
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const payload = {
+      member_id: memberId,
+      amount: Number(amountInput.value),
+      reason: form.elements.reason.value.trim()
+    };
+    const key = JSON.stringify(payload);
+    if (key !== retryPayload) {
+      retryPayload = key;
+      retryId = uuid();
+    }
+    const requestBody = JSON.stringify({
+      request_id: retryId,
+      ...payload
+    });
+    form.querySelectorAll('input,textarea,button').forEach((element) => {
+      element.disabled = true;
+    });
+    $('#form-error').classList.add('hidden');
+    try {
+      await api('/api/admin/points/adjustments', {
+        method: 'POST',
+        body: requestBody
+      });
+      state.dialogDirty = false;
+      await actions.refresh(true);
+      await openAdmin();
+      toast('Puntensaldo aangepast en geregistreerd.');
+    } catch (error) {
+      errorInForm(error);
+      if (error.status === 409) {
+        try {
+          await actions.refresh(true);
+          balance = state.data.balances[memberId] || balance;
+        } catch (refreshError) {
+          errorInForm(refreshError);
+        }
+      }
+    } finally {
+      if (form.isConnected) {
+        form.querySelectorAll('input,textarea,button').forEach((element) => {
+          element.disabled = false;
+        });
+        updatePreview();
+      }
+    }
+  };
+}
+
 export function accountMarkup(a, index) {
   return `<div class="account" data-account="${esc(a.id)}"><div class="account-head"><h3>CalDAV-account ${index + 1}</h3><button type="button" class="danger remove-account" aria-label="Account verwijderen">${icon('close')}</button></div>${field('Serveradres', 'caldav-url', a.url, 'url', 'required placeholder="https://calendar.example.org/dav/"')}${field('Gebruikersnaam', 'caldav-user', a.username, 'text', 'required autocomplete="off"')}${field(a.configured ? 'Nieuw wachtwoord (leeg = behouden)' : 'Wachtwoord', 'caldav-pass', '', 'password', 'autocomplete="new-password"')}<button type="button" class="secondary discover-cal">Agenda’s ophalen</button><div class="discovery">${calendarChoices(a.calendars || [], a.calendars || [])}</div></div>`;
 }
@@ -117,7 +207,14 @@ export function renderAdmin() {
   const c = state.adminCfg;
   modal(
     'Ons dashboard instellen',
-    `<div class="toolbar"><span class="small muted">Beheersessie · 30 minuten</span><button id="logout" class="secondary small">${icon('lock')}Vergrendelen</button></div><div class="admin-tabs" role="tablist" aria-label="Instellingen"><button type="button" id="admin-tab-general" role="tab" aria-selected="true" aria-controls="admin-general" data-admin-tab="general">Algemeen</button><button type="button" id="admin-tab-device" role="tab" aria-selected="false" aria-controls="admin-device" tabindex="-1" data-admin-tab="device">Dit apparaat</button></div><div id="admin-general" role="tabpanel" aria-labelledby="admin-tab-general"><section class="settings-section"><h3>Ons gezin</h3><div class="family-list">${state.data.members.map((m) => `<button class="person" data-admin-member="${m.id}">${avatar(m)}${esc(m.name)}${icon('edit')}</button>`).join('')}</div><button id="new-member" class="secondary">${icon('plus')}Gezinslid toevoegen</button></section><form id="edit-form"><section class="settings-section"><h3>Logo en teksten</h3>${field('Titel', 'brand_title', c.brand_title, 'text', 'maxlength="40" required')}${field('Subtitel', 'brand_subtitle', c.brand_subtitle, 'text', 'maxlength="80"')}<div class="brand-image-controls"><div id="brand-image-preview" class="brand-image-preview">${c.brand_image ? `<img src="${esc(c.brand_image)}" alt="">` : '<span>s</span><span>✳</span>'}</div><div class="brand-image-actions"><label for="brand-image-file">Gezinsfoto voor het logo</label><input id="brand-image-file" type="file" accept="image/jpeg,image/png,image/webp"><small>JPEG, PNG of WebP; wordt verkleind opgeslagen.</small><button type="button" id="remove-brand-image" class="secondary small" ${c.brand_image ? '' : 'hidden'}>Foto verwijderen</button></div></div><input id="brand_image" name="brand_image" type="hidden" value="${esc(c.brand_image)}"></section><section class="settings-section"><h3>Algemeen</h3>${field('Tijdzone', 'timezone', c.timezone, 'text', 'required')}</section><section class="settings-section"><h3>Agenda · CalDAV</h3><p>Alleen-lezen. Selecteer de agenda’s die je wilt tonen. Synchronisatie loopt elke drie minuten; inloggegevens blijven op de server.</p><div id="accounts">${c.caldav.map(accountMarkup).join('')}</div><button type="button" id="add-account" class="secondary">${icon('plus')}Account toevoegen</button></section><section class="settings-section"><h3>Home Assistant-dashboard</h3>${field('Serveradres', 'ha_url', c.ha_url, 'url', 'placeholder="http://homeassistant.local:8123"')}${field('Dashboardpad', 'ha_dashboard', c.ha_dashboard || '/lovelace/0', 'text', 'required placeholder="/lovelace/0"')}<p>Vul het pad in van het dashboard dat je in Home Assistant hebt gemaakt, bijvoorbeeld <code>/lovelace/0</code> of <code>/dashboard-gezinsdashboard/overzicht</code>. Home Assistant verzorgt zelf de inhoud en bediening. Je browser moet toegang hebben tot dit adres en daar zo nodig zijn aangemeld.</p></section><section class="settings-section"><h3>Immich</h3>${field('Serveradres (zonder /api)', 'immich_url', c.immich_url, 'url', 'placeholder="http://immich.local:2283"')}${field(c.immich_configured ? 'Nieuwe API-sleutel (leeg = behouden)' : 'API-sleutel', 'immich_key', '', 'password', 'autocomplete="new-password"')}<button type="button" id="discover-albums" class="secondary">Albums ophalen</button><div id="albums" class="discovery">${c.albums.map((id) => `<label class="check-label"><input type="checkbox" name="albums" value="${esc(id)}" checked>Geselecteerd album ${esc(id.slice(0, 8))}</label>`).join('')}</div>${field('Wisseltijd (seconden)', 'slide_seconds', c.slide_seconds, 'number', 'min="5" max="300" required')}<p>Alleen geselecteerde albums zijn toegestaan. Foto’s worden uitsluitend gelezen. De servercache is begrensd.</p></section><div class="form-actions"><button type="submit" class="primary">Instellingen opslaan</button></div></form><section class="settings-section"><button id="sync-now" class="secondary">${icon('routine')}Nu synchroniseren</button><p class="notice">Sla gewijzigde instellingen eerst op.</p></section></div><div id="admin-device" role="tabpanel" aria-labelledby="admin-tab-device" hidden></div>`
+    `<div class="toolbar"><span class="small muted">Beheersessie · 30 minuten</span><button id="logout" class="secondary small">${icon('lock')}Vergrendelen</button></div><div class="admin-tabs" role="tablist" aria-label="Instellingen"><button type="button" id="admin-tab-general" role="tab" aria-selected="true" aria-controls="admin-general" data-admin-tab="general">Algemeen</button><button type="button" id="admin-tab-device" role="tab" aria-selected="false" aria-controls="admin-device" tabindex="-1" data-admin-tab="device">Dit apparaat</button></div><div id="admin-general" role="tabpanel" aria-labelledby="admin-tab-general"><section class="settings-section"><h3>Ons gezin</h3><p>Pas zo nodig punten aan; elke correctie wordt met reden vastgelegd.</p><div class="admin-family-list">${state.data.members
+      .map((m) => {
+        const balance = state.data.balances[m.id] || { balance: 0, reserved: 0, available: 0 };
+        return `<div class="admin-family-row"><button type="button" class="person" data-admin-member="${m.id}">${avatar(m)}<span>${esc(m.name)}</span>${icon('edit')}</button><div class="admin-family-balance"><span>${balance.balance} totaal · ${balance.reserved} gereserveerd · ${balance.available} beschikbaar</span><button type="button" class="secondary small" data-adjust-points="${m.id}" aria-label="Saldo aanpassen voor ${esc(m.name)}">Saldo aanpassen</button></div></div>`;
+      })
+      .join(
+        ''
+      )}</div><button id="new-member" class="secondary">${icon('plus')}Gezinslid toevoegen</button></section><form id="edit-form"><section class="settings-section"><h3>Logo en teksten</h3>${field('Titel', 'brand_title', c.brand_title, 'text', 'maxlength="40" required')}${field('Subtitel', 'brand_subtitle', c.brand_subtitle, 'text', 'maxlength="80"')}<div class="brand-image-controls"><div id="brand-image-preview" class="brand-image-preview">${c.brand_image ? `<img src="${esc(c.brand_image)}" alt="">` : '<span>s</span><span>✳</span>'}</div><div class="brand-image-actions"><label for="brand-image-file">Gezinsfoto voor het logo</label><input id="brand-image-file" type="file" accept="image/jpeg,image/png,image/webp"><small>JPEG, PNG of WebP; wordt verkleind opgeslagen.</small><button type="button" id="remove-brand-image" class="secondary small" ${c.brand_image ? '' : 'hidden'}>Foto verwijderen</button></div></div><input id="brand_image" name="brand_image" type="hidden" value="${esc(c.brand_image)}"></section><section class="settings-section"><h3>Algemeen</h3>${field('Tijdzone', 'timezone', c.timezone, 'text', 'required')}</section><section class="settings-section"><h3>Agenda · CalDAV</h3><p>Alleen-lezen. Selecteer de agenda’s die je wilt tonen. Synchronisatie loopt elke drie minuten; inloggegevens blijven op de server.</p><div id="accounts">${c.caldav.map(accountMarkup).join('')}</div><button type="button" id="add-account" class="secondary">${icon('plus')}Account toevoegen</button></section><section class="settings-section"><h3>Home Assistant-dashboard</h3>${field('Serveradres', 'ha_url', c.ha_url, 'url', 'placeholder="http://homeassistant.local:8123"')}${field('Dashboardpad', 'ha_dashboard', c.ha_dashboard || '/lovelace/0', 'text', 'required placeholder="/lovelace/0"')}<p>Vul het pad in van het dashboard dat je in Home Assistant hebt gemaakt, bijvoorbeeld <code>/lovelace/0</code> of <code>/dashboard-gezinsdashboard/overzicht</code>. Home Assistant verzorgt zelf de inhoud en bediening. Je browser moet toegang hebben tot dit adres en daar zo nodig zijn aangemeld.</p></section><section class="settings-section"><h3>Immich</h3>${field('Serveradres (zonder /api)', 'immich_url', c.immich_url, 'url', 'placeholder="http://immich.local:2283"')}${field(c.immich_configured ? 'Nieuwe API-sleutel (leeg = behouden)' : 'API-sleutel', 'immich_key', '', 'password', 'autocomplete="new-password"')}<button type="button" id="discover-albums" class="secondary">Albums ophalen</button><div id="albums" class="discovery">${c.albums.map((id) => `<label class="check-label"><input type="checkbox" name="albums" value="${esc(id)}" checked>Geselecteerd album ${esc(id.slice(0, 8))}</label>`).join('')}</div>${field('Wisseltijd (seconden)', 'slide_seconds', c.slide_seconds, 'number', 'min="5" max="300" required')}<p>Alleen geselecteerde albums zijn toegestaan. Foto’s worden uitsluitend gelezen. De servercache is begrensd.</p></section><div class="form-actions"><button type="submit" class="primary">Instellingen opslaan</button></div></form><section class="settings-section"><button id="sync-now" class="secondary">${icon('routine')}Nu synchroniseren</button><p class="notice">Sla gewijzigde instellingen eerst op.</p></section></div><div id="admin-device" role="tabpanel" aria-labelledby="admin-tab-device" hidden></div>`
   );
   $('#admin-device').insertAdjacentHTML(
     'beforeend',
@@ -139,13 +236,14 @@ export function renderAdmin() {
   };
   let generalDirty = false,
     deviceDirty = false,
+    gamesDirty = false,
     brandImageTask = Promise.resolve(),
     brandImageError = null,
     brandImageSelection = 0;
   $('#dialog').oninput = (event) => {
     if (event.target.closest('#admin-device')) deviceDirty = true;
     else generalDirty = true;
-    state.dialogDirty = generalDirty || deviceDirty;
+    state.dialogDirty = generalDirty || deviceDirty || gamesDirty;
   };
   const updateBrandImagePreview = (value) => {
     const preview = $('#brand-image-preview');
@@ -249,8 +347,8 @@ export function renderAdmin() {
       localStorage.setItem('samen-screen', JSON.stringify(next));
       state.screen = next;
       deviceDirty = false;
-      state.dialogDirty = generalDirty;
-      const returnToAdmin = !generalDirty;
+      state.dialogDirty = generalDirty || gamesDirty;
+      const returnToAdmin = !generalDirty && !gamesDirty;
       if (!state.dialogDirty) $('#dialog').close();
       await actions.refresh(true);
       if (returnToAdmin) await actions.openAdmin();
@@ -260,6 +358,10 @@ export function renderAdmin() {
     }
   };
   bindRewardAdmin();
+  bindGameAdmin((dirty) => {
+    gamesDirty = dirty;
+    state.dialogDirty = generalDirty || deviceDirty || gamesDirty;
+  });
   $('#logout').onclick = async () => {
     await api('/api/logout', {
       method: 'POST'
@@ -286,6 +388,15 @@ export function renderAdmin() {
             'Niet-opgeslagen instellingen verlaten?'
           );
         actions.editEntity('members', memberToEdit);
+      })
+  );
+  document.querySelectorAll('[data-adjust-points]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        const openAdjustment = () => adjustMemberPoints(button.dataset.adjustPoints);
+        if (state.dialogDirty)
+          return confirmDiscard(openAdjustment, 'Niet-opgeslagen instellingen verlaten?');
+        openAdjustment();
       })
   );
   $('#add-account').onclick = () => {
@@ -342,9 +453,9 @@ export function renderAdmin() {
     },
     () => {
       generalDirty = false;
-      return deviceDirty;
+      return deviceDirty || gamesDirty;
     },
-    () => (deviceDirty ? undefined : actions.openAdmin())
+    () => (deviceDirty || gamesDirty ? undefined : actions.openAdmin())
   );
   $('#sync-now').onclick = async () => {
     const b = $('#sync-now');

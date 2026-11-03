@@ -52,7 +52,7 @@ de database moet intact zijn en de app moet als UID/GID 10001 starten. Links naa
 bestanden en mappen buiten de opslag worden niet gevolgd; hardlinks worden geweigerd.
 
 ```sh
-CONTAINER_TEST_IMAGE=ruudv/family-dashboard:0.2.1 .venv/bin/python -m pytest tests/test_container_storage.py -q
+CONTAINER_TEST_IMAGE=ruudv/family-dashboard:0.3.0 .venv/bin/python -m pytest tests/test_container_storage.py -q
 ```
 
 Zonder `CONTAINER_TEST_IMAGE` worden deze Docker-tests overgeslagen.
@@ -97,7 +97,7 @@ De unitreview voegde 35 gevallen toe: planning rond startdatum en schrikkeldag, 
 |---|---|
 | UI-01–09, UI-11 | Hoofdtabs en subnavigatie, geselecteerde datum, maandag, iPhone 13: 390×664, 750×342, 768×1024, 1024×768, 1440×1000; overflow en aanraakmaten; toetsenbordfocus; herkenbare profielen |
 | UI-10 | Weigeren van navigatie en Escape bij conceptinvoer; behoud na opslagfout en versieconflict |
-| UI-12 | Kindmodus voor het gekozen kinderprofiel, taken/routines/beloningsaanvraag, verborgen ouderbediening en terugkeer naar de planner; kaartgrenzen, overflow en aanraakmaten op mobiel en tablet |
+| UI-12 | Kindmodus als eigen hoofdnavigatietab voor het gekozen kinderprofiel, taken/routines/beloningsaanvraag, selectie en navigatie van routines met starttijdklokken, zichtbare hoofdnavigatie en bovenbalkklok, verborgen beheerbediening en terugkeer naar de planner via Kalender; kaartgrenzen, overflow en aanraakmaten op mobiel en tablet |
 | GEZ-01–05 | Inloggen met fout/goed wachtwoord, profiel maken/bewerken, foto uploaden/vervangen/verwijderen en behouden bij andere wijzigingen, filtering, vergrendelen en onbevoegde API-toegang |
 | UI-03, AG-01 | Lokale taakuitvoeringen zichtbaar in een aparte rij boven de agenda op hun geplande dagen in dag-, drie-daagse en weekweergave; filter per gezinslid en direct afvinken |
 | AG-01, AG-04 | Scrollbaar 24-uursrooster dat initieel de huidige tijd ±2/4 uur toont, met actuele-tijdindicator; duurafhankelijke afspraakhoogte en overlapindeling; vroege/late en hele-dagafspraken, tijdzones en meerdaagse afspraken; browserfixtures |
@@ -193,3 +193,140 @@ browserchecks draaien; formatter- en modulecontroles bewijzen geen correct scher
 - Python/JavaScript/CSS-opmaak, Ruff, JavaScript-syntax en modulegrenzen: geslaagd.
 - De navigatieregressie controleert ook dat de interactieve klok geen tabknoppen overlapt.
 - Zie [VERIFICATION.md](VERIFICATION.md) voor de volledige uitslag en niet-uitgevoerde controles.
+
+## Dagovergang van een open dashboard
+
+`tests/e2e/test_day_rollover.py` gebruikt de Playwright-klok rond middernacht in de
+geconfigureerde tijdzone. De tests controleren de zichtbare datum in kindmodus,
+nieuwe onafgevinkte dagelijkse taken en routines, behoud van de vorige voortgang,
+terugkeer naar het tabblad na een tijdsprong en behoud van bewust gekozen
+ouderdatums. Ze gebruiken de echte state-API met tijdelijke gegevens.
+
+Gericht uitvoeren:
+
+```sh
+.venv/bin/python -m pytest tests/e2e/test_day_rollover.py --browser chromium --browser webkit -q
+```
+
+De aanvullende oudermodusregressie controleert ook expliciet ingestelde weekdagen:
+voltooien op de eerste dag, geen uitvoering op een overgeslagen dag, een lege
+uitvoering op de volgende ingeplande dag en terugbladeren met onveranderde
+uitvoeringsgegevens en voltooiingshistorie inclusief tijdstip.
+
+## Routines in de agenda en het dagoverzicht
+
+`tests/e2e/test_routine_agenda.py` controleert de echte dagelijkse uitvoeringen via
+geïsoleerde API-fixtures, met uitsluitend een afspraak als CalDAV-browserfixture:
+
+- Dag-, drie dagen- en weekweergave op mobiel (390×664) en desktop (1440×1000),
+  ingeplande kaarten met tijdvenster in het rooster, kaarten zonder tijdvenster
+  erboven, gezinsfilter, aanraakmaten en overlap met afspraken.
+- Routine openen in een paneel, afvinken/heropenen per persoon, gedeelde voortgang
+  met het routineoverzicht, afgeronde kaarten zichtbaar als Klaar en persistentie
+  na herladen. Escape/sluiten herstelt de focus op de kaart.
+- Openen van een andere dag werkt de gedeelde datumselectie bij. Het paneel volgt
+  externe voortgangswijzigingen; na een netwerkfout blijft de stap beschikbaar om
+  opnieuw te proberen, met een foutmelding in het paneel.
+- Een lege routinedag toont geen sjablonen van andere dagen; de vervolgknop opent
+  de eerstvolgende geplande dag. Routines beheren toont planning los van uitvoeringen.
+- Nieuwe routines kunnen vanuit de editor zonder tijdvenster worden opgeslagen,
+  zowel via Tijdvenster gebruiken als door beide velden leeg te maken. Opnieuw
+  inschakelen herstelt geldige tijden. Dit vangt ook de native WebKit-validatie af.
+
+De validator-unitchecks testen lege tijdvensters, onvolledige vensters en ongeldige
+tijden. Routine-uitvoeringen van vandaag en eerdere dagen en uitvoeringen met
+voortgang of afvinkhistorie behouden hun snapshot. Onaangeraakte toekomstige
+routine-uitvoeringen volgen wijzigingen, ook na eerder bekijken.
+
+
+De bereikregressies in `test_routine_agenda.py` installeren en pauzeren de browserklok
+vóór het herladen. Ze controleren dat terugkeer vanuit het daggebonden routineoverzicht
+direct de volledige agenda ophaalt, zonder een volgende polling-tick af te wachten.
+Een afzonderlijke test houdt het dagantwoord tegen tot na de terugkeer; dat antwoord
+mag de weekgegevens niet vervangen. Een routine met startdatum vandaag verschijnt op
+alle drie komende dagen en alle zeven dagen van de volgende kalenderweek, maar niet
+vóór de startdatum.
+
+
+## Eerder bekeken toekomstplannen van routines
+
+De API-regressies in `tests/test_app.py` controleren dat gewijzigde naam, tijd en
+stappen ook worden toegepast op reeds aangemaakte toekomstplannen. Een versieconflict
+voorkomt dat een oude browser de oude stapindex opslaat. Herhaald verversen blijft
+stabiel en een volgende wijziging blijft mogelijk zolang er geen afvinkhistorie is.
+Gedeeltelijk voltooide, voltooide en heropende toekomstuitvoeringen behouden hun
+snapshot, historie en punten. Gewijzigde weekdagen, personen, startdatum en
+archivering verbergen vervallen onaangeraakte plannen zonder opslagrecords te
+wissen; opnieuw activeren gebruikt dezelfde uitvoerings-ID's.
+
+De browserregressie `test_previously_viewed_future_week_updates_after_routine_is_renamed_and_rescheduled`
+bootst de eerder bekeken werkweek met een ochtendroutine na, waarna die routine
+naar elke avond verhuist. Alle zeven kaarten en de stappen in het paneel moeten
+vervolgens de nieuwe routine tonen. Eerder opgeslagen historische uitvoeringen
+worden via de API vergeleken met hun oorspronkelijke inhoud.
+
+
+Een aanvullende browserregressie combineert op één toekomstige dag een al afgevinkte
+oude ochtenduitvoering voor één persoon en de gewijzigde avondplanning voor een
+ander. Kaarten en panelen moeten de afzonderlijke namen, tijden en stappen tonen;
+het oude stappenpakket mag het nieuwe plan niet overschrijven bij groeperen.
+
+
+## Spelletjes
+
+`tests/test_games.py` controleert geïsoleerd de HTTP-contracten voor prijsbeheer,
+gereserveerde punten, gelijktijdige aankopen, verzoekdeduplicatie, prijs- en
+sessieversies, verstrijken, stoppen en het afronden van alle drie spellen.
+`tests/e2e/test_games.py` controleert aankoop, hervatten na herladen, behoud van
+voortgang/eindtijd, visueel Dierenorkest, prijsbeheer, toegang vanuit kindmodus
+en de drie mobiele/tabletformaten. Aanvullende tests controleren behoud van andere
+instellingsconcepten bij het opslaan van een spelprijs en onzekere HTTP-antwoorden
+na een reeds verwerkte aankoop of zet. De Memory-test gebruikt een lokale fictieve
+Immich-server met zes testafbeeldingen; geen echte fotoaccounts of `.env`.
+
+```sh
+.venv/bin/python -m pytest tests/test_games.py -q
+.venv/bin/python -m pytest tests/e2e/test_games.py --browser chromium --browser firefox --browser webkit -q --tracing retain-on-failure --screenshot only-on-failure
+```
+
+Fysieke touchscreens, luisteracceptatie van de dieropnames op fysieke apparaten en
+gebruik met de echte Immich-installatie vragen aparte handmatige acceptatie.
+
+
+De Dierenorkest-regressie gebruikt een gepauzeerde Playwright-klok om de
+3–2–1-overlay, de extra 1,5 seconde rust en het eerste oplichtende dier exact te
+controleren. Ze controleert ook dat de geluidsknop naast Stoppen staat op
+390×664, 750×342 en 768×1024, dat geluid schakelen de aftelling niet herstart,
+dat de overlay het hele spelvenster zonder binnenranden bedekt, het cijfer
+binnen het zichtbare venster blijft en
+`backdrop-filter: blur(12px)` gebruikt. Ook de volgende ronde telt 3–2–1 af
+met 1,5 seconde rust; handmatig herhalen binnen de ronde begint direct.
+Stoppen ruimt de timers op.
+
+
+De foutfeedbackregressie kiest bewust een verkeerd dier en controleert de
+foutoverlay gedurende 2 seconden, het juiste foutbestand bij geluid aan,
+stilte bij geluid uit, opnieuw aftellen, behoud van de ronde en het saldo,
+en het verdwijnen van de fout na een juiste keuze. Afzonderlijke browsertests
+decoderen alle vijf lokale WAV-bestanden, controleren duur/piekniveau en
+controleren dat een echte opname na inschakelen van geluid kan afspelen.
+De API-regressie controleert het vastleggen en wissen van `feedback`.
+
+
+De volledige Dierenorkest-flow controleert de dierenviering op 390×664,
+750×342 en 768×1024: alleen na alle zes reeksen, alle vier de diersoorten in
+42 vliegende icoontjes, daadwerkelijk zichtbare CSS-opacity, leesbare tekst,
+automatisch en handmatig sluiten, behoud na een laat sessieantwoord en de
+rustige variant bij minder beweging. De geluidstests verwachten standaard
+inschakeling, controleren echt afspelen na alleen de aankoopknop en behouden
+dekking voor expliciet dempen. De herhaalknop heeft een SVG van minstens 36px.
+De routinevieringstest controleert na hergebruik nog steeds tien verschillende
+thema's en niet-herhalende boodschappen.
+
+
+De Dierenorkest-layoutregressie controleert ook 1280×900 naast de mobiele en
+tabletformaten. Ze controleert het titelicoon, een breder venster op grotere
+schermen, zichtbare ruimte tussen uitleg en dierenknoppen, en een gecentreerde
+herhaalknop onder het speelbord met ruimte tot de onderrand. De lage liggende
+variant zet de vier dieren op één rij. De bestaande overlay- en vieringstests
+blijven de venstergrenzen en leesbaarheid controleren.

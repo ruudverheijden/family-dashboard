@@ -1,6 +1,6 @@
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     user: "0:0"
     command:
       - python
@@ -38,7 +38,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     depends_on:
       storage-init:
         condition: service_completed_successfully

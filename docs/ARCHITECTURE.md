@@ -13,7 +13,7 @@ geen API-adressen, gegevensformaat, databaseversie of functionele planningsregel
 | `routes.py`, `schemas.py` | HTTP-verzoeken, autorisatiegrenzen, verzoekmodellen en antwoorden. |
 | `auth.py`, `security.py` | Beheersessies, loginbeperking, cookiebeleid, verzoekgrootte en oorsprongcontrole. |
 | `validation.py`, `errors.py` | Bestaande normalisatie/validatieregels en fouten die de HTTP-grens vertaalt. |
-| `services/planner.py` | Planning, inhalen van dagen en onveranderlijke uitvoeringssnapshots. |
+| `services/planner.py` | Planning, inhalen van dagen, actuele toekomstige routineplannen en beschermde uitvoeringssnapshots. |
 | `services/entities.py` | Versiebeveiligde mutaties, voltooiing, historie en herkenning van dubbele verzoeken. |
 | `services/points.py`, `services/rewards.py` | Puntenboekingen, tegenboekingen, reserveringen en ouderbeslissingen. |
 | `services/dashboard.py` | Het bestaande samengestelde dashboardantwoord en historie. |
@@ -42,9 +42,9 @@ npm-installatie of bundler nodig voor productie. Alleen de ontwikkelchecks gebru
 |---|---|
 | `app.js` | Opstarten, callbacks aansluiten, globale gebruikersinteractie en timers. |
 | `state.js` | Expliciete gedeelde schermtoestand: datum, filter, navigatie, ontvangen gegevens en voorkeuren. |
-| `shell.js` | Vernieuwen, navigatie, schermopbouw en gedeelde actiecoördinatie. |
+| `shell.js` | Vernieuwen, navigatie, schermopbouw, routinepaneel en gedeelde actiecoördinatie. |
 | `api.js` | HTTP-verkeer, foutvertaling en mutatie-enveloppen. |
-| `calendar.js` | Agenda, taken/routines, datumweergave en klok. |
+| `calendar.js` | Agenda, taken/routines, gedeelde routinekaart-/stappenmarkup, datumweergave en klok. |
 | `groceries.js`, `rewards.js`, `photos.js`, `home.js` | Weergave en functies voor boodschappen, beloningen, Immich en Home Assistant. |
 | `editor.js`, `admin.js`, `dialogs.js` | Bewerkformulieren, instellingen, dialooggedrag en invoerbehoud. |
 | `helpers.js`, `icons.js`, `celebrations.js` | Gedeelde presentatiehulpen, pictogrammen en voltooiingsanimaties. |
@@ -54,6 +54,15 @@ npm-installatie of bundler nodig voor productie. Alleen de ontwikkelchecks gebru
 Zo kunnen schermonderdelen bijvoorbeeld opnieuw renderen of een editor openen zonder
 cirkelafhankelijkheden te introduceren. Voeg hier alleen schermcoördinatie aan toe; gewone
 hulpfuncties horen bij hun eigen module en krijgen normale imports.
+
+Het routinepaneel bewaart zijn geselecteerde uitvoering (sjabloon, dag en uitvoerings-ID) privé in
+`shell.js`. Het gebruikt dezelfde `data-run`-actie en ontvangen uitvoeringen als de
+routinetab. Polling vernieuwt de paneelinhoud alleen als de markup verandert en
+herstelt de focus op dezelfde stap. Kaarten groeperen alleen gelijke routine-inhoud;
+als één persoon een oude uitvoering met voortgang heeft en een ander een nieuw
+toekomstplan volgt, opent elke kaart zijn eigen snapshot en stappen. Het paneel geldt als actieve invoer voor de
+inactiviteitsbewaking. Voltooiingsanimaties worden in de actieve dialoog geplaatst
+om boven de modale achtergrond bedienbaar te blijven.
 
 Foto-object-URL's, downloadannulering en de diavolgorde horen bij `photos.js`. Tijdelijke
 formulierinhoud blijft in de editor/dialoog. Zet nieuwe gegevens alleen in `state.js` als
@@ -67,8 +76,18 @@ gebruikerswijzigingen; het samenvoegen van CSS-overschrijvingen is een aparte ve
 
 ## Gedragsregels die behouden moeten blijven
 
-- Een sjabloon en een uitvoering zijn verschillende records. Bestaande uitvoeringssnapshots
-  wijzigen niet bij het bewerken of archiveren van een sjabloon.
+- Een sjabloon en een uitvoering zijn verschillende records. Taaksnapshots blijven
+  behouden. Routines van vandaag en eerdere dagen, en routine-uitvoeringen met
+  voortgang, afvinkhistorie of puntenboekingen, behouden eveneens hun snapshot.
+  Toekomstige routines zonder die gegevens volgen de actuele planning, ook als ze
+  al door een kalenderbezoek zijn aangemaakt. `refresh_future_routines` gebruikt de
+  bestaande transactie en verhoogt bij gewijzigde inhoud het uitvoeringsversienummer.
+  Een oudere browser kan daardoor geen oude stapindex op een nieuwe routine toepassen.
+  Heropenen maakt een uitvoering niet opnieuw wijzigbaar: de historie blijft tellen.
+  Niet meer geplande toekomstige, onaangeraakte uitvoeringen worden bij selectie
+  verborgen; opslagrecords, historie en puntenboekingen worden niet verwijderd.
+  Verversen gebeurt bij routinewijzigingen, planning inhalen en vóór routinevoortgang
+  wordt opgeslagen. Ook een mutatie van een vervallen plan wordt geweigerd.
 - Bij een gewijzigde taakverdeling verbergt de dashboardselectie oude open uitvoeringen
   wanneer dezelfde taak en dag uitvoeringen met de actuele verdeling hebben. Ook eerder
   heropende uitvoeringen vallen hieronder; opgeslagen snapshots, historie en puntenboekingen
@@ -86,6 +105,10 @@ gebruikerswijzigingen; het samenvoegen van CSS-overschrijvingen is een aparte ve
   goedkeuring controleert opnieuw het beschikbare saldo.
 - Een gezinsprofiel is een filter, geen authenticatie. Integratiegeheimen gaan niet naar de
   browser en volgen niet automatisch een gewijzigd serveradres.
+- Terugkeer naar de agenda vraagt direct het bijbehorende dag-/drie dagen-/weekbereik
+  op. `shell.js` vergelijkt de query na ontvangst opnieuw met de actuele selectie;
+  verouderde antwoorden worden niet gepubliceerd. Een tijdens een lopend verzoek
+  gevraagde geforceerde verversing wordt direct na afloop uitgevoerd.
 - Polling blijft elke 1,5 seconde lopen wanneer het scherm zichtbaar is. Conceptinvoer,
   conflictafhandeling, scrollpositie en de bestaande foto-/inactiviteitsregels blijven behouden.
 - Ook de tijdens het werk toegevoegde klokpopup, achtergrondsluiting van dialogen en het
@@ -146,3 +169,83 @@ Het dashboard wacht via `service_completed_successfully` en blijft draaien als
 UID/GID 10001 met alle capabilities verwijderd. `db.init()` blijft verantwoordelijk
 voor een ontbrekende database en de schema-initialisatie. Een opslagfout stopt de
 voorbereiding; de app wijkt nooit stilzwijgend uit naar niet-persistente opslag.
+
+
+## Spelletjes
+
+`app/games/` bevat per spel de geïsoleerde regels met `create(photos)`,
+`play(board, value)` en `view(board)`. De registry in `__init__.py` koppelt een
+stabiele spel-ID aan regels en catalogusteksten. `view` schermt verborgen
+Memory-kaarten af. Een spelregel kent geen HTTP, database of puntenledger.
+
+`services/games.py` beheert prijsversies, aankopen, sessies en geldige zetten.
+Schema 3 voegt `game_settings` en `game_sessions` toe; bestaande gegevens blijven
+behouden. Aankoop, afschrijving, historie en verzoekdeduplicatie gebruiken één
+`BEGIN IMMEDIATE`-transactie. Acties gebruiken versies en verzoeknummers binnen
+dezelfde transactie. Iedere aankoopretry leest de actuele sessie terug en start
+geen nieuw bord of nieuwe timer. Geldigheid wordt ook op de server gecontroleerd;
+verlopen records blijven bewaard maar tellen niet als actieve sessie.
+
+Een foto-snapshot wordt vóór de databasetransactie opgehaald. Geen nieuwe
+upstream-aanvragen, cache of fotolock binnen de puntentransactie. De bestaande
+foto-API blijft de actuele albumrechten controleren. De browser controleert de
+zes foto's vóór aankoop; een latere upstreamstoring geeft geen automatische
+restitutie. Een profiel blijft een filter, zoals bij bestaande beloningen;
+het is geen nieuwe authenticatiegrens.
+
+`static/js/games/index.js` bezit aankoopretry's, de spelerkeuze, de modal en
+sessiecoördinatie. Private speltoestand komt niet in `state.js`. Renderers onder
+`static/js/games/` implementeren `mount(root, board, move, sound)` en leveren een
+cleanupfunctie voor timers en eventlisteners. Alleen gewijzigde sessieversies
+bouwen het spel opnieuw op; dashboardpolling onderbreekt een spel niet. De
+server bewaart de voortgang; de browser voegt alleen presentatie, tonen en
+animaties toe. De modal sluit via expliciet stoppen of het eindscherm; Escape
+volgt dezelfde stopactie. De bestaande inactiviteitswissel raadpleegt
+`isGameOpen()`.
+
+Een nieuw spel voegt een engine en renderer toe en registreert dezelfde ID in
+beide registries. Voeg daarbij regeltests, API-/sessietests en browseracceptatie
+toe. Prijzen en de algemene levenscyclus hoeven daarvoor niet te worden aangepast.
+
+
+De Dierenorkest-aftelling gebruikt een transparante blurlaag over de volledige
+spelmodal. De kop blijft erboven bedienbaar. Tijdens het aftellen wordt de modal
+naar boven gezet en scrollen tijdelijk geblokkeerd, zodat cijfers op liggende
+schermen zichtbaar blijven. De renderer ruimt die tijdelijke klasse samen met
+zijn timers op. Elke nieuwe ronde en nieuwe poging krijgt de voorbereiding;
+handmatig herhalen binnen een ronde start zonder nieuwe aftelling.
+
+
+Dierenorkest bewaart het resultaat van de laatste geldige zet als `feedback`
+in zijn serverbord: `mistake` bij een verkeerde keuze, leeg bij een juiste.
+De browser toont daarop 2 seconden foutfeedback vóór de nieuwe voorbereiding.
+Polling bouwt een ongewijzigde sessie niet opnieuw op en herhaalt daardoor
+het foutgeluid niet. Een volgende zet wist het vorige resultaat.
+
+`games/orchestra-audio.js` bevat een private pool van lokale audio-elementen,
+met één tegelijk klinkend fragment. Opnames worden vooraf geladen en lopen
+bij gewone renderupdates door, zodat een snelle API-respons de dierenroep niet
+afbreekt. De optionele rendererhook `stopAudio()` wordt door de sessiecoördinator
+aangeroepen bij dempen, sessie-einde en sluiten. Audiofouten geven een melding;
+visueel spelen blijft mogelijk. Zie `ORCHESTRA_AUDIO.md` voor bronopnames,
+licenties en de bewerkingen van de lokale WAV-bestanden.
+
+
+Een renderer kan ook `celebrateCompletion(memberName, container)` aanbieden.
+De sessiecoördinator roept deze alleen aan bij de overgang van actief naar
+voltooid en bewaart de teruggegeven opruimfunctie. Dierenorkest gebruikt de
+bestaande routineviering met een eigen dierenvariant; de routinevariantrotatie
+blijft onafhankelijk. `celebrateRoutineCompletion` accepteert optioneel een
+variant en een sluitcallback en geeft een idempotente opruimfunctie terug.
+Ongewijzigde terminale sessieantwoorden bouwen de modal niet opnieuw op, zodat
+een laat pollingantwoord de viering niet afbreekt of opnieuw start. De viering
+respecteert minder beweging en wordt opgeruimd bij sluiten of een nieuw spel.
+Geluid begint aan; de keuze voor dempen blijft binnen de geladen pagina behouden.
+
+
+De spelmodal krijgt `data-game` voor gescheiden layoutregels per spel. Een
+renderer kan optioneel `titleIcon` aanbieden; de sessiecoördinator ontsnapt die
+waarde en plaatst het decoratieve icoon bij de titel. Dierenorkest groepeert de
+uitleg en onderbediening afzonderlijk. De ruimere popup en de compacte variant
+met vier dieren naast elkaar op lage schermen zijn uitsluitend op dit spel
+van toepassing; andere spelmodules behouden hun eigen layout.

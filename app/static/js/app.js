@@ -1,3 +1,4 @@
+import { isGameOpen } from './games/index.js';
 import { icon } from './icons.js';
 import { applyTheme, navigate, operation, refresh, render } from './shell.js';
 import { $ } from './helpers.js';
@@ -12,6 +13,7 @@ import {
 } from './calendar.js';
 import { actions } from './actions.js';
 import { editEntity, showHistory, showTemplates } from './editor.js';
+import { updateChildRoutineSelection } from './child-mode.js';
 
 Object.assign(actions, {
   render,
@@ -78,6 +80,7 @@ setInterval(() => {
     state.screen.idle > 0 &&
     Date.now() - state.lastActivity > state.screen.idle * 60000 &&
     !hasInput() &&
+    !isGameOpen() &&
     !(state.tab === 'calendar' && state.sub === 'routines') &&
     state.data?.photos.length &&
     state.tab !== 'photos'
@@ -86,7 +89,10 @@ setInterval(() => {
     render();
   }
   updateHeaderDate();
-  if (state.data) updateCurrentTimeIndicator();
+  if (state.data) {
+    updateCurrentTimeIndicator();
+    if (updateChildRoutineSelection()) render();
+  }
 }, 1000);
 window.addEventListener('resize', () => {
   syncAgendaColumnWidths();

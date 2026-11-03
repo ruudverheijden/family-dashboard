@@ -2,25 +2,25 @@
 
 Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en herinneringen. Zelf te hosten, zonder abonnement, NAS-afhankelijkheid of externe frontenddiensten.
 
-**Versie 0.2.1 — ontwikkelversie met beveiligde containerbasis.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
+**Versie 0.3.0 — met kinderspellen, routineplanning en automatische dagwisseling.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
 
 ![Samen gezinsdashboard](docs/screenshot.png)
 
 ## Wat werkt
 
-- Vaste hoofdnavigatie: Kalender, Home Assistant, Immich en Boodschappen. Eén gedeelde datumselectie boven het gezinsfilter voor agenda, taken, routines en beloningen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
+- Vaste hoofdnavigatie: Kalender, Spelletjes, Home Assistant, Immich en Boodschappen. Eén gedeelde datumselectie boven het gezinsfilter voor agenda, taken, routines en beloningen. Nederlandse datums, maandag als weekstart, 24-uursklok en instelbare tijdzone.
 - De vaste datumweergave toont een analoge klok met cijfers 1–12 en de eerstvolgende agenda-afspraak.
 - Gezinsleden met naam, kleur en emoji-avatar; gezamenlijk overzicht of filter per persoon.
 - Beheerbare headerbranding: pas titel en subtitel aan en upload een gezinsfoto als logo.
 - Dag- en weekagenda toont lokale taakuitvoeringen op hun geplande dagen, met voltooiing direct vanuit de agenda. CalDAV is optioneel voor privéafspraken; de gezinsplanner werkt ook zonder gekoppelde agenda.
 - CalDAV-accountbeheer, agenda-ontdekking, selectie en gezinskoppeling. Alleen-lezen privéafspraken met herhalingen, uitzonderingen en tijdzones.
 - Taken met beschrijving, datum, icoon, punten per uitvoering, dag/weekherhaling en individuele of gezamenlijke uitvoering.
-- Routines met geordende stappen, personen, weekdagen en tijdvenster. Punten worden één keer toegekend als alle stappen af zijn; voortgang blijft server-side bewaard en gemiste stappen blijven open.
-- Kindmodus voor een gedeeld scherm: persoonlijke taken, routinevoortgang en beloningen van vandaag met grote bediening. De kindmodus verbergt ouderbeheer, maar is geen beveiligingsgrens.
+- Routines met geordende stappen, personen, weekdagen en een optioneel tijdvenster. Punten worden één keer toegekend als alle stappen af zijn; elke ingeplande kalenderdag heeft per persoon een eigen uitvoering die onafgevinkt begint. Op niet-ingeplande weekdagen is er geen uitvoering. Voortgang en afvinktijdstippen blijven server-side bewaard; blader met de datumknoppen terug om de voortgang van eerdere dagen te zien. Gemiste stappen blijven op hun eigen dag open.
+- Kindmodus voor een gedeeld scherm: persoonlijke taken, routinevoortgang en beloningen van vandaag met grote bediening. De volledige datum staat bij de begroeting. Bij een nieuwe dag (ook na sluimerstand) verschijnen automatisch de taken en routines van vandaag in de ingestelde tijdzone; eerdere voortgang blijft op de oorspronkelijke datum bewaard. De ouderweergave schuift mee als die op vandaag stond; een bewust gekozen andere datum blijft geselecteerd. De kindmodus verbergt ouderbeheer, maar is geen beveiligingsgrens.
 - Gedeelde boodschappen met hoeveelheid, notitie, bewerken, afvinken, herstellen en opruimen.
 - Automatische verversing elke 1,5 seconde; versienummers voorkomen stil overschrijven. Dubbele verzoeken worden herkend.
 - Beveiligd beheer, server-side integratiegeheimen, historie, SQLite-back-up en healthcheck.
-- Puntensaldi en herleidbare transacties per gezinslid, beheerbare beloningen, aanvragen met gereserveerde punten en oudergoedkeuring. Een voltooiing ongedaan maken boekt de bijbehorende punten terug.
+- Puntensaldi en herleidbare transacties per gezinslid, beheerbare beloningen, aanvragen met gereserveerde punten en oudergoedkeuring. Ouders kunnen het saldo per gezinslid corrigeren; een reden is optioneel en gereserveerde punten blijven beschermd. Een voltooiing ongedaan maken boekt de bijbehorende punten terug.
 - Home Assistant-dashboard rechtstreeks ingesloten vanuit het zelfgekozen HA-dashboardpad. Immich-fotolijst uit geselecteerde albums, pauze/vorige/volgende, voorladen, begrensde servercache en schermspecifieke voorkeuren.
 
 Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filter en geen authenticatie. De kindmodus vereenvoudigt de bediening maar biedt geen toegangsbeveiliging. Alleen een beheerder kan de beloningscatalogus beheren en aanvragen goedkeuren. Recepten en maaltijdplanning zijn niet opgenomen.
@@ -30,7 +30,7 @@ Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filte
 De kant-en-klare image staat op [Docker Hub: ruudv/family-dashboard](https://hub.docker.com/r/ruudv/family-dashboard).
 Je hoeft de broncode niet te downloaden of zelf te bouwen.
 
-**Tag:** `ruudv/family-dashboard:0.2.1`. Deze gepubliceerde versie ondersteunt
+**Tag:** `ruudv/family-dashboard:0.3.0`. Deze gepubliceerde versie ondersteunt
 **Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+, en **Linux arm64**.
 Gebruik de expliciete versietag; er wordt geen `latest`-tag aangeboden.
 
@@ -42,7 +42,7 @@ sla onderstaande configuratie op als `compose.yaml`:
 ```yaml
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     user: "0:0"
     command:
       - python
@@ -80,7 +80,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     depends_on:
       storage-init:
         condition: service_completed_successfully
@@ -226,7 +226,7 @@ Zie [Configuratie](#configuratie) voor eigen opslagpaden en schrijfrechten.
 
 ## Zelf bouwen met Docker Compose
 
-Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux amd64 of arm64 bouwen. De Docker Hub-image voor 0.2.1 ondersteunt amd64 en arm64. Beide builds en containerstart zijn lokaal op een Mac gecontroleerd, amd64 via emulatie. Uitvoering op een fysieke NAS is nog niet geverifieerd. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de Docker-host nodig.
+Benodigd: Docker Engine met Compose v2. Met de Dockerfile kun je zelf voor Linux amd64 of arm64 bouwen. De Docker Hub-image voor 0.3.0 ondersteunt amd64 en arm64. Beide builds en containerstart zijn lokaal op een Mac gecontroleerd, amd64 via emulatie. Uitvoering op een fysieke NAS is nog niet geverifieerd. Er zijn geen Node-, Python- of NAS-ontwikkeltools op de Docker-host nodig.
 
 1. Clone [de GitHub-repository](https://github.com/ruudverheijden/family-dashboard) of kopieer deze projectmap naar de server.
 2. Kopieer `.env.example` naar `.env`. Vervang `ADMIN_PASSWORD` door een eigen wachtwoord. Pas eventueel `PORT` aan.
@@ -247,7 +247,7 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | Instelling | Plaats | Betekenis |
 |---|---|---|
 | `ADMIN_PASSWORD` | `.env` | Beheerwachtwoord; wijzigen vereist containerherstart |
-| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.2.1` |
+| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.3.0` |
 | `DATA_VOLUME`, `CACHE_VOLUME` | `.env` / Portainer | Optionele absolute hostpaden; standaard benoemde Docker-volumes |
 | `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
 | `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
@@ -300,7 +300,27 @@ Onder **Beheer → Dit apparaat** kun je een inactiviteitstimer aanzetten. Stand
 
 ## Uitvoeringen, conflicten en historie
 
-Sjablonen en uitvoeringen zijn aparte records. Een achtergrondtaak maakt verlopen uitvoeringen aan tot vandaag (inhaalperiode maximaal twee jaar); niets wordt automatisch voltooid. Een gekozen datum maakt ook de bijbehorende uitvoeringen aan. Elke uitvoering bevat een snapshot van het sjabloon. Bewerken of archiveren wijzigt bestaande uitvoeringsgegevens, planning en historie niet, ook niet wanneer je een toekomstige datum al hebt bekeken. In het takenoverzicht worden wel de actuele titel, het pictogram, de beschrijving en punten van het sjabloon getoond, zodat een bewerkte taak direct herkenbaar is.
+Sjablonen en uitvoeringen zijn aparte records. Een achtergrondtaak maakt verlopen uitvoeringen aan tot vandaag (inhaalperiode maximaal twee jaar); niets wordt automatisch voltooid. Een gekozen datum maakt ook de bijbehorende uitvoeringen aan. Elke uitvoering bevat een snapshot van het sjabloon. Bij routines volgen toekomstige uitvoeringen zonder vinkjes, afvinkhistorie of puntenboekingen de actuele naam, stappen, personen, dagen en tijdvensters, ook als je die dagen al eerder hebt bekeken. Een oude geopende kaart moet eerst de nieuwe planning ophalen voordat je daarop verder kunt afvinken. Uitvoeringen van vandaag en eerdere dagen, en elke uitvoering met voortgang of afvinkhistorie, behouden hun snapshot. Ook na heropenen blijft die historie beschermd. Geannuleerde toekomstige uitvoeringen zonder voortgang verdwijnen uit de planning; hun opslagrecord blijft behouden. Bestaande taakuitvoeringen behouden hun snapshot bij bewerken en archiveren. In het takenoverzicht worden wel de actuele titel, het pictogram, de beschrijving en punten van het sjabloon getoond, zodat een bewerkte taak direct herkenbaar is.
+
+Het routineoverzicht toont uitsluitend routines voor de geselecteerde dag. Een lege dag
+biedt een knop naar de eerstvolgende ingeplande routinedag voor het gekozen gezinsfilter,
+wanneer die bestaat. **Routines beheren** toont de volledige planning met personen,
+weekdagen, startdatum en tijdvensters; daar kun je routines bewerken of archiveren.
+
+De weekagenda loopt van maandag tot en met zondag. Routines verschijnen vanaf
+hun ingestelde startdatum op de gekozen weekdagen. Op zondag staan de komende
+dagen dus in **Volgende week**, of kies **3 dagen** om vandaag en de twee volgende
+dagen te zien. Teruggaan van Routines naar Agenda laadt direct het volledige
+zichtbare bereik.
+
+In de agenda staan routines met tijdvenster tussen de afspraken, met een eigen
+routinepictogram en omlijning. Routines zonder tijdvenster staan boven het rooster.
+Schakel bij het maken of bewerken **Tijdvenster gebruiken** uit voor een routine
+zonder vaste tijd. Het leegmaken van beide tijdvelden schakelt dit ook uit. De kaarten tonen personen en voortgang; afgeronde routines blijven zichtbaar
+als **Klaar**. Open een kaart om de stappen in een paneel af te vinken of te heropenen.
+Dat gebruikt dezelfde dagelijkse voortgang als het routineoverzicht en de kindmodus.
+Bij een kaart op een andere dag verandert ook de gedeelde datumselectie. Sluiten of
+Escape brengt je terug naar de agenda. Een opslagfout wordt in het paneel getoond.
 
 Een routinevenster is een aanwijzing, geen blokkering: je kunt een stap later alsnog afvinken. Vensters over middernacht worden in deze versie niet ondersteund. Niet-afgeronde taken blijven op hun eigen datum zichtbaar; er is nog geen apart overzicht voor alle achterstallige taken.
 
@@ -310,7 +330,7 @@ Bij verbindingsverlies wordt geen succesvolle opslag gemeld. Er is geen offline 
 
 ## Back-up en herstel
 
-De SQLite-back-up bevat gezinsgegevens, uitvoeringen, puntenledger, beloningsaanvragen, historie en integratiegeheimen. Bewaar hem privé en versleuteld; neem ook `.env` en eventuele aangepaste Compose-configuratie mee. Foto’s in de cache hoeven niet te worden geback-upt.
+De SQLite-back-up bevat gezinsgegevens, uitvoeringen, puntenledger, beloningsaanvragen, spelprijzen, spelsessies, historie en integratiegeheimen. Bewaar hem privé en versleuteld; neem ook `.env` en eventuele aangepaste Compose-configuratie mee. Foto’s in de cache hoeven niet te worden geback-upt.
 
 Consistente online back-up (gebruik een nieuwe bestandsnaam per back-up):
 
@@ -343,7 +363,7 @@ Het dashboard zelf behoudt zijn gewone gebruiker en verwijderde capabilities.
 
 Bij een installatie vanuit broncode: maak eerst een back-up. Vervang de broncode door de gewenste versie, bouw opnieuw met `BUILDX_GIT_INFO=false docker build -t family-dashboard:local .` en start met `DASHBOARD_IMAGE=family-dashboard:local docker compose up -d --pull never`. Zet voor latere beheeropdrachten ook `DASHBOARD_IMAGE=family-dashboard:local` in je lokale `.env`. Normale containervervanging behoudt de volumes. **`docker compose down -v` verwijdert gegevens** en hoort niet bij een update.
 
-Databaseschema: versie 2 via `PRAGMA user_version`; bestaande versie-1-databases krijgen bij starten automatisch de tabellen voor punten en beloningsaanvragen. De applicatie weigert een database met een nieuwere schemaversie. Downgraden na migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
+Databaseschema: versie 3 via `PRAGMA user_version`; bestaande versie-1- en versie-2-databases krijgen bij starten automatisch ontbrekende tabellen voor punten, beloningsaanvragen, spelprijzen en spelsessies. De applicatie weigert een database met een nieuwere schemaversie. Downgraden na migraties gebeurt door herstel van een versiepassende back-up. Dependencyversies zijn vastgelegd in `requirements.txt`; de Python-basisimage is een onderhoudstag, nog niet op digest vastgezet.
 
 Lokaal ontwikkelen (Python 3.12+, in de oplevering getest met Python 3.14). De app leest `ADMIN_PASSWORD` automatisch uit `.env` als die niet al in de procesomgeving staat:
 
@@ -367,7 +387,7 @@ Gebruik **één Uvicorn-worker**: de beheersessies, integratiescheduler en foto-
 
 ## Publieke distributie
 
-Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. De broncode staat op [GitHub](https://github.com/ruudverheijden/family-dashboard) en de gebouwde amd64-image op [Docker Hub](https://hub.docker.com/r/ruudv/family-dashboard). De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
+Code, voorbeeldconfiguratie en tests bevatten uitsluitend generieke of fictieve gegevens. `.env`, database, cache en back-ups staan in `.gitignore` en `.dockerignore`. De broncode staat op [GitHub](https://github.com/ruudverheijden/family-dashboard) en de gebouwde amd64- en arm64-image op [Docker Hub](https://hub.docker.com/r/ruudv/family-dashboard). De projectlicentie is **PolyForm Noncommercial 1.0.0**. Activeer vóór publicatie private vulnerability reporting. Zie [SECURITY.md](SECURITY.md).
 
 Voor een Docker Hub-release bouw je opnieuw vanuit de huidige broncode. De Docker-context
 sluit ook geneste Python-cachebestanden uit: die kunnen lokale gebruikersnamen en paden
@@ -382,7 +402,7 @@ De Dockerfile gebruikt Python 3.12 op Alpine 3.23 met musl en installeert beschi
 Alpine-updates plus minimaal `zlib 1.3.2-r1`. Daarmee is CVE-2026-85091 verholpen;
 glibc (CVE-2026-84243) is niet aanwezig. Bestaande gepubliceerde images worden hierdoor
 niet bijgewerkt: bouw en publiceer een nieuwe versietag en vervang daarna de container
-met behoud van de volumes. De eerder gepubliceerde tag `0.1.0` bevat deze wijziging niet; gebruik `0.2.1`.
+met behoud van de volumes. De eerder gepubliceerde tag `0.1.0` bevat deze wijziging niet; gebruik `0.3.0`.
 Zie [containerverificatie](docs/VERIFICATION.md) voor de uitgevoerde scans en tests.
 
 Versie `0.2.1` werkt daarnaast `python-dotenv` bij naar `1.2.2` voor
@@ -410,3 +430,57 @@ Samen wordt aangeboden onder de [PolyForm Noncommercial License 1.0.0](LICENSE) 
 - Bij verspreiding moeten de licentievoorwaarden of hun URL en eventuele `Required Notice:`-vermeldingen behouden blijven.
 
 De broncode is daarmee beschikbaar voor niet-commercieel gebruik; dit is geen onbeperkte open-sourcelicentie. De volledige [officiële voorwaarden](https://polyformproject.org/licenses/noncommercial/1.0.0) zijn leidend. Afhankelijkheden en andere componenten van derden behouden hun eigen licenties; deze projectlicentie wijzigt die niet.
+
+
+## Spelletjes als puntenbeloning
+
+Het eigen hoofdtabblad **Spelletjes** bevat Foto-memory, Dierenorkest en
+Doolhofavontuur. Ook vanuit de kindmodus is er een knop naar de spelletjes.
+Kies een gezinslid en tik op **Speel voor … punten**. Een aankoop schrijft de
+punten direct af; er is geen aparte oudergoedkeuring. Punten die al voor een
+gewone beloningsaanvraag gereserveerd zijn, kunnen niet worden uitgegeven.
+
+In **Beheer → Algemeen → Spelletjes** stel je voor elk spel afzonderlijk de
+puntenprijs in (1–100.000; standaard 5). Gebruik de knop **Spelprijs opslaan**
+bij dat spel. De prijs van een reeds gekochte sessie verandert niet.
+
+- **Foto-memory:** één bord met 6 fotoparen. Selecteer via Beheer minstens 6
+  beschikbare foto's in Immich-albums. Het spel gebruikt de eerste 6 foto's uit
+  de huidige selectie en schudt hun kaarten. De browser controleert vóór aankoop
+  of de foto's laden. Bij een laadfout wordt niet gekocht. Foto's blijven onder
+  de bestaande Immich-toegangscontrole vallen; er is geen aparte kopie of cache.
+- **Dierenorkest:** tik steeds een langere dierenreeks na, tot een reeks van 6.
+  Bij een fout verschijnt 2 seconden een vervaagde **Oeps**-overlay met een kort
+  foutgeluid. Daarna volgen de aftelling en dezelfde reeks opnieuw, zonder
+  strafpunten. De visuele aanwijzingen werken zonder geluid. Iedere ronde begint met een **3–2–1**-overlay
+  met vervaagde achtergrond, gevolgd door 1,5 seconde rust voordat het eerste
+  dier verschijnt. De icoonknop
+  Geluid staat standaard aan. **Geluid uit/aan** bovenin naast **Stoppen**
+  schakelt zowel echte dieropnames
+  als het foutgeluid. De opnames zijn lokaal opgeslagen, dus tijdens het spelen
+  is geen externe geluidsdienst nodig. Zie [geluidsbronnen en licenties](docs/ORCHESTRA_AUDIO.md).
+  De ruimere spelpopup heeft een 🎶-icoon bij de titel en extra ruimte tussen
+  uitleg en dierenknoppen. De grote ronde pijlen bij **Opnieuw**, midden
+  onderaan, herhalen de aanwijzingen. Na alle zes
+  reeksen volgt dezelfde feestanimatie als bij routines, met kikker, poes, hond
+  en kuiken als vliegende icoontjes. De animatie sluit vanzelf na 4,6 seconden
+  of via **Verder**. Bij de apparaatvoorkeur voor minder beweging blijft het
+  rustige eindscherm staan.
+- **Doolhofavontuur:** breng de muis naar de kaas in één willekeurig doolhof,
+  met de grote schermpijlen of de pijltjestoetsen.
+
+Elke sessie eindigt bij het speldoel, bij bevestigd stoppen of na maximaal
+3 minuten. De laatste 30 seconden verschijnt een aftelling. Stoppen geeft geen
+punten terug. Per gezinslid is één lopende sessie toegestaan; een ander gezinslid
+kan op een ander scherm zijn eigen spel spelen. Herladen of een ander scherm
+opent via **Verder spelen** dezelfde voortgang en eindtijd. De tijd loopt door
+wanneer je het spel verlaat of de browser sluit. Een serverherstart bewaart de
+sessie en verlengt die tijd niet. Tijdens een open spelsessie schakelt de
+inactiviteitsfunctie niet naar de fotolijst.
+
+Bij verbindingsverlies kun je dezelfde zet of aankoop opnieuw proberen; het
+verzoeknummer voorkomt dubbele afschrijving of dubbele zetten. Controleer na
+herladen eerst **Verder spelen**. Als Immich tijdens het spelen uitvalt of een
+album ingetrokken wordt, blijven die foto's ontoegankelijk; controleer de
+albumselectie en verbinding. Een beheerder kan zo nodig via de bestaande
+puntencorrectie compenseren.

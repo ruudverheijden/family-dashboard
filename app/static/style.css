@@ -326,6 +326,56 @@ main {
   gap: 5px
 }
 
+.admin-family-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px
+}
+
+.admin-family-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line)
+}
+
+.admin-family-row .person {
+  min-width: 0
+}
+
+.admin-family-balance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-left: 53px;
+  color: var(--muted);
+  font-size: 12px
+}
+
+.admin-family-balance span {
+  flex: 1 1 150px
+}
+
+.admin-family-list:not(:empty)+#new-member {
+  margin-top: 12px
+}
+
+.point-adjustment-balance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 14px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: var(--green-soft)
+}
+
+.point-adjustment-balance span {
+  display: flex;
+  gap: 5px;
+  align-items: center
+}
+
 .person {
   justify-content: start;
   text-align: left;
@@ -1265,20 +1315,6 @@ textarea {
     height: 80px
   }
 
-  .main-tabs {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-radius: 0;
-    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
-    z-index: 30;
-    background: var(--surface);
-    border-top: 1px solid var(--line);
-    gap: 4px;
-    justify-content: space-around
-  }
-
   .main-tabs button {
     flex: 1;
     flex-direction: column;
@@ -1710,6 +1746,57 @@ textarea {
   margin: 12px 0
 }
 
+.reward-admin-table {
+  width: 100%;
+  margin: 12px 0 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px
+}
+
+.reward-admin-table th,
+.reward-admin-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left
+}
+
+.reward-admin-table thead th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600
+}
+
+.reward-admin-table thead th:nth-child(2),
+.reward-admin-table tbody td:nth-child(2) {
+  width: 110px;
+  text-align: right;
+  white-space: nowrap
+}
+
+.reward-admin-table thead th:last-child,
+.reward-admin-table tbody td:last-child {
+  width: 132px;
+  text-align: right
+}
+
+.reward-admin-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0
+}
+
+.reward-admin-name span:last-child {
+  overflow-wrap: anywhere
+}
+
+.reward-admin-add {
+  display: flex;
+  width: fit-content;
+  margin-top: 12px
+}
+
 .settings-section .history-item {
   display: flex;
   align-items: center;
@@ -1730,6 +1817,26 @@ textarea {
 
   .reward-balance {
     font-size: 23px
+  }
+
+  .reward-admin-table th,
+  .reward-admin-table td {
+    padding: 8px 4px
+  }
+
+  .reward-admin-table thead th:nth-child(2),
+  .reward-admin-table tbody td:nth-child(2) {
+    width: 84px
+  }
+
+  .reward-admin-table thead th:last-child,
+  .reward-admin-table tbody td:last-child {
+    width: 112px
+  }
+
+  .reward-admin-table .small {
+    padding: 8px;
+    gap: 5px
   }
 
   .reward-grid {
@@ -2066,7 +2173,7 @@ body.integration-view {
     flex-direction: row
   }
 
-  .integration-view .main-tabs button span:not([data-icon]) {
+  .integration-view .main-tabs button span:not([data-icon]):not([aria-hidden="true"]) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -2861,20 +2968,9 @@ dialog::backdrop {
   border-color: var(--glass-edge)
 }
 
-.child-mode .main-tabs,
 .child-mode #admin,
-.child-mode #clock-toggle,
-.child-mode #calendar-date,
 .child-mode #agenda-status {
   display: none !important
-}
-
-.child-mode .topbar {
-  display: none
-}
-
-.child-mode .brand-caption {
-  display: none
 }
 
 .child-mode-page {
@@ -3027,7 +3123,115 @@ dialog::backdrop {
   padding: 18px 22px
 }
 
-.child-routine-card>header,
+.child-routine-carousel {
+  display: grid;
+  gap: 12px
+}
+
+.child-routine-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px
+}
+
+.child-routine-navigation span {
+  color: var(--muted);
+  font-size: 15px;
+  text-align: center
+}
+
+.child-routine-time {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  grid-area: time;
+  justify-self: end;
+  width: 168px
+}
+
+.child-routine-time>div {
+  display: grid;
+  gap: 2px
+}
+
+.child-routine-time>div>span {
+  color: var(--muted);
+  font-size: 13px
+}
+
+.child-routine-time time {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums
+}
+
+.child-routine-clock {
+  width: 76px;
+  height: 76px;
+  color: var(--green);
+  stroke-width: 1
+}
+
+.child-routine-clock-face {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 2
+}
+
+.child-routine-clock-numerals {
+  fill: var(--muted);
+  stroke: none;
+  font-size: 8px;
+  text-anchor: middle
+}
+
+.child-routine-clock-hand {
+  stroke: currentColor;
+  stroke-linecap: round
+}
+
+.child-routine-hour-hand {
+  stroke-width: 3
+}
+
+.child-routine-minute-hand {
+  stroke-width: 2
+}
+
+.child-routine-clock-center {
+  fill: currentColor;
+  stroke: none
+}
+
+.child-routine-card>header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "heading"
+    "progress";
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 12px
+}
+
+.child-routine-card>header.has-time {
+  grid-template-columns: minmax(0, 1fr) 168px;
+  grid-template-areas:
+    "heading time"
+    "progress progress"
+}
+
+.child-routine-heading {
+  grid-area: heading;
+  min-width: 0
+}
+
+.child-routine-progress {
+  grid-area: progress;
+  width: min(220px, 100%)
+}
+
 .child-rewards>header {
   display: flex;
   align-items: center;
@@ -3244,9 +3448,35 @@ dialog::backdrop {
     padding: 14px
   }
 
-  .child-routine-card>header,
-  .child-rewards>header {
+  .child-routine-card>header {
     gap: 10px
+  }
+
+  .child-routine-card>header.has-time {
+    grid-template-columns: minmax(0, 1fr) 150px
+  }
+
+  .child-rewards>header {
+    flex-wrap: wrap;
+    gap: 10px
+  }
+
+  .child-routine-card>header .child-progress {
+    width: 100%;
+    max-width: none
+  }
+
+  .child-routine-clock {
+    width: 64px;
+    height: 64px
+  }
+
+  .child-routine-time time {
+    font-size: 20px
+  }
+
+  .child-routine-navigation span {
+    font-size: 13px
   }
 
   .child-routine-card>header h2 {
@@ -4426,15 +4656,20 @@ dialog::backdrop {
     width: auto;
     min-width: 0;
     height: auto;
-    min-height: 44px;
+    min-height: 48px;
     padding: 6px 2px;
     flex-direction: column;
     gap: 3px;
     font-size: 10px
   }
 
-  .topbar .main-tabs button span:not([data-icon]),
-  .integration-view .main-tabs button span:not([data-icon]) {
+  .child-mode .topbar .main-tabs button {
+    min-height: 48px
+  }
+
+  .topbar .main-tabs button span:not([data-icon]):not([aria-hidden="true"]),
+  .integration-view .main-tabs button span:not([data-icon]):not([aria-hidden="true"]) {
+    display: none;
     position: static;
     width: auto;
     height: auto;
@@ -4468,6 +4703,10 @@ dialog::backdrop {
     display: none
   }
 
+  .child-mode .topbar #clock-toggle {
+    display: flex
+  }
+
   .topbar #admin {
     flex: 0 0 48px;
     width: 48px;
@@ -4475,15 +4714,15 @@ dialog::backdrop {
     height: 48px;
     min-height: 48px
   }
+
+  .child-mode .child-profile-switcher {
+    display: none
+  }
 }
 
 @media(max-width:360px) {
   .topbar .child-profile-switcher {
     gap: 2px
-  }
-
-  .topbar .main-tabs button span:not([data-icon]) {
-    display: none
   }
 }
 
@@ -4537,4 +4776,535 @@ dialog::backdrop {
 
 .task-editor .form-actions {
   margin-top: 0
+}
+
+/* Routines share daily executions with the planner; their cards remain distinct from appointments. */
+.routine-empty {
+  grid-column: 1/-1;
+  padding: 36px 24px;
+  text-align: center
+}
+
+.routine-empty p {
+  margin: 12px 0 20px;
+  color: var(--muted)
+}
+
+.calendar-routine-row {
+  border-bottom: 1px solid var(--line);
+  padding-right: var(--calendar-scrollbar-width, 0px)
+}
+
+.agenda-routine {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed var(--green);
+  border-left: 4px solid var(--green);
+  border-radius: 10px;
+  background: var(--green-soft);
+  color: var(--ink);
+  text-align: left;
+  line-height: 1.2;
+  overflow: hidden
+}
+
+.agenda-routine strong,
+.agenda-routine small,
+.agenda-routine time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap
+}
+
+.agenda-routine-kind,
+.agenda-routine-open {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 650
+}
+
+.agenda-routine-kind svg,
+.agenda-routine-open svg {
+  width: 12px;
+  height: 12px;
+  flex: none
+}
+
+.agenda-routine strong {
+  font-size: 13px
+}
+
+.agenda-routine time,
+.agenda-routine small {
+  font-size: 11px
+}
+
+.agenda-routine.done {
+  border-style: solid;
+  opacity: .8
+}
+
+.agenda-routine.timed-event {
+  width: calc(var(--event-width) - 4px);
+  min-height: 48px;
+  padding: 4px 6px;
+  gap: 1px;
+  border-radius: 6px
+}
+
+.agenda-routine.timed-event .agenda-routine-open {
+  display: none
+}
+
+.timetable-calendar:not(.day-view) .agenda-routine.timed-event strong {
+  font-size: 11px
+}
+
+.timetable-calendar:not(.day-view) .agenda-routine.timed-event small,
+.timetable-calendar:not(.day-view) .agenda-routine.timed-event time {
+  font-size: 9px
+}
+
+#routine-dialog {
+  width: min(680px, calc(100vw - 24px));
+  padding: 24px;
+  background: var(--surface)
+}
+
+.routine-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px
+}
+
+.routine-dialog-head h2 {
+  font-size: 16px;
+  overflow-wrap: anywhere
+}
+
+#routine-dialog-body .panel {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none
+}
+
+#routine-dialog-body .routine-header h2 {
+  overflow-wrap: anywhere
+}
+
+#routine-dialog-body .step {
+  flex-wrap: wrap
+}
+
+[data-template] {
+  flex-wrap: wrap;
+  text-align: left
+}
+
+[data-template] small {
+  width: 100%;
+  color: var(--muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere
+}
+
+@media(max-width:760px) {
+  #routine-dialog {
+    padding: 16px
+  }
+}
+
+#routine-dialog-error:empty {
+  display: none
+}
+
+.agenda-routine-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0
+}
+
+.agenda-routine-meta time {
+  min-width: 0
+}
+
+.agenda-routine-kind {
+  flex: none
+}
+
+.agenda-routine.timed-event time {
+  margin: 0;
+  font-size: 9px
+}
+
+.agenda-routine.timed-event strong {
+  font-size: 12px
+}
+
+.agenda-routine.timed-event small {
+  font-size: 10px
+}
+
+/* Games own their layout; dashboard cascade stays in its existing order. */
+.games-page {
+  max-width: 1100px;
+  margin: auto;
+  padding: 24px;
+}
+
+.game-profiles,
+.game-header,
+.game-price-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.game-profiles button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.game-profiles .active {
+  outline: 3px solid var(--accent, #d66b4f);
+}
+
+#game-dialog {
+  width: min(680px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 20px;
+  overflow: auto;
+}
+
+.game-header h2 {
+  flex: 1;
+  margin: 0;
+}
+
+.game-header button,
+.games-page button,
+.maze-controls button {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.game-sound {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+}
+
+.game-sound svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.memory-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.memory-card {
+  aspect-ratio: 1;
+  padding: 0;
+  min-height: 48px;
+  overflow: hidden;
+  font-size: 32px;
+}
+
+.memory-card:disabled {
+  opacity: 1;
+}
+
+.memory-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.animal-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.animal-button {
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.animal-button span {
+  font-size: 42px;
+}
+
+.animal-button.animal-cue {
+  outline: 5px solid var(--accent, #d66b4f);
+  background: #ffe29a;
+  opacity: 1;
+  color: #30281b;
+}
+
+.maze-board {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  max-width: 360px;
+  margin: 12px auto;
+  background: #fff8e6;
+}
+
+.maze-cell {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  font-size: clamp(16px, 4vw, 30px);
+}
+
+.maze-cell.wall {
+  background: #42634d;
+}
+
+.maze-controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.game-finish {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.game-finish>span {
+  font-size: 64px;
+}
+
+.game-price-form input {
+  max-width: 140px;
+}
+
+
+.orchestra-stage {
+  display: flow-root;
+}
+
+.orchestra-countdown,
+.orchestra-feedback {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 0;
+  background: transparent;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--ink);
+}
+
+.orchestra-countdown[hidden],
+.orchestra-feedback[hidden] {
+  display: none;
+}
+
+.orchestra-countdown strong {
+  font-size: clamp(80px, 18vw, 140px);
+  line-height: 1;
+  color: var(--accent);
+}
+
+
+.game-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.game-header-actions .game-sound {
+  margin: 0;
+}
+
+
+#game-dialog.game-preparing {
+  overflow: hidden;
+}
+
+#game-dialog .game-header {
+  position: relative;
+  z-index: 3;
+}
+
+
+.orchestra-feedback {
+  padding: 64px 24px 24px;
+  text-align: center;
+}
+
+.orchestra-feedback>div {
+  max-width: 420px;
+}
+
+.orchestra-feedback-icon {
+  display: block;
+  font-size: 56px;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.orchestra-feedback h3 {
+  font-size: clamp(20px, 4vw, 28px);
+  margin: 12px 0;
+}
+
+
+#orchestra-repeat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 20px;
+}
+
+#orchestra-repeat svg {
+  width: 36px;
+  height: 36px;
+}
+
+#game-dialog.game-celebrating {
+  min-height: min(420px, calc(100dvh - 24px));
+  overflow: hidden;
+}
+
+#game-dialog>.routine-celebration[data-variant="orchestra"] {
+  position: absolute;
+}
+
+.routine-celebration[data-variant="orchestra"] .routine-celebration-message {
+  max-width: calc(100% - 32px);
+  padding: clamp(16px, 4vw, 28px);
+}
+
+.routine-celebration[data-variant="orchestra"] .routine-celebration-message h2 {
+  font-size: clamp(24px, 5vw, 40px);
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+}
+
+
+#game-dialog[data-game="orchestra"] {
+  width: min(840px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: clamp(24px, 4vw, 40px);
+}
+
+#game-dialog[data-game="orchestra"].game-celebrating {
+  min-height: min(420px, calc(100dvh - 32px));
+}
+
+#game-dialog[data-game="orchestra"] .game-header {
+  margin-bottom: 24px;
+}
+
+#game-dialog[data-game="orchestra"] .game-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-title-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.orchestra-instructions {
+  margin-bottom: 24px;
+}
+
+.orchestra-instructions p {
+  margin: 0;
+}
+
+.orchestra-instructions p+p {
+  margin-top: 8px;
+}
+
+.orchestra-stage .animal-board {
+  gap: 16px;
+  margin-bottom: 0;
+}
+
+.orchestra-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+#orchestra-audio-notice:empty,
+#game-dialog[data-game="orchestra"] #game-error:empty {
+  display: none;
+}
+
+@media (min-width: 600px) and (max-height: 480px) {
+  #game-dialog[data-game="orchestra"] {
+    padding: 16px 24px;
+  }
+
+  #game-dialog[data-game="orchestra"] .game-header {
+    margin-bottom: 16px;
+  }
+
+  .orchestra-instructions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .orchestra-instructions p+p {
+    margin-top: 0;
+  }
+
+  .orchestra-stage .animal-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .orchestra-stage .animal-button {
+    min-height: 88px;
+  }
+
+  .orchestra-stage .animal-button span {
+    font-size: 36px;
+    line-height: 1.1;
+  }
+
+  .orchestra-controls {
+    margin-top: 16px;
+  }
 }

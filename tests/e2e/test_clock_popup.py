@@ -43,3 +43,35 @@ def test_clock_and_navigation_do_not_overlap(dashboard, width):
         }""")
     page.get_by_role("button", name="Toon grote klok").click()
     expect(page.get_by_role("dialog", name="Hoe laat is het?")).to_be_visible()
+
+
+@pytest.mark.parametrize(
+    ("width", "labels_visible"),
+    [(390, False), (760, False), (761, True), (850, True)],
+)
+def test_header_tab_labels_hide_when_space_is_limited(dashboard, width, labels_visible):
+    page = dashboard
+    page.set_viewport_size({"width": width, "height": 900})
+    navigation = page.get_by_role("navigation", name="Hoofdnavigatie")
+
+    for label in ["Kalender", "Spelletjes", "Home Assistant", "Immich", "Boodschappen"]:
+        button = navigation.get_by_role("button", name=label, exact=True)
+        expect(button).to_have_attribute("aria-label", label)
+        text = button.locator('span:not([data-icon]):not([aria-hidden="true"])')
+        if labels_visible:
+            expect(text).to_be_visible()
+            assert button.evaluate(
+                """button => {
+                    const buttonBox = button.getBoundingClientRect();
+                    const labelBox = button.querySelector(
+                        'span:not([data-icon]):not([aria-hidden="true"])'
+                    ).getBoundingClientRect();
+                    return labelBox.left >= buttonBox.left &&
+                        labelBox.right <= buttonBox.right;
+                }"""
+            )
+        else:
+            expect(text).to_be_hidden()
+
+    game_icon = navigation.get_by_role("button", name="Spelletjes").locator('[aria-hidden="true"]')
+    expect(game_icon).to_be_visible()

@@ -12,7 +12,7 @@ fotolijst samen op één scherm.
 
 ## Beschikbare image
 
-`ruudv/family-dashboard:0.2.1` — **Linux amd64 en arm64**, waaronder de
+`ruudv/family-dashboard:0.3.0` — **Linux amd64 en arm64**, waaronder de
 Synology DS918+ (amd64). Er is geen `latest`-tag beschikbaar.
 
 0.2.1 bevat de beveiligingsupdate voor python-dotenv en verwijdert pip uit de runtime.
@@ -30,7 +30,7 @@ Sla de volgende YAML op als `compose.yaml`. In Portainer kun je hem plakken via
 ```yaml
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     user: "0:0"
     command:
       - python
@@ -68,7 +68,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.2.1}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
     depends_on:
       storage-init:
         condition: service_completed_successfully

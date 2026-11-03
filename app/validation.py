@@ -125,11 +125,13 @@ def validate(kind, data, db):
         if len(result["steps"]) != len(steps):
             raise DomainError(422, "Ongeldige stappen.")
         for field in ("start_time", "end_time"):
-            value = text_field(data, field, 5, True)
-            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value):
+            value = text_field(data, field, 5)
+            if value and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value):
                 raise DomainError(422, "Ongeldig tijdvenster.")
             result[field] = value
-        if result["end_time"] <= result["start_time"]:
+        if bool(result["start_time"]) != bool(result["end_time"]):
+            raise DomainError(422, "Vul beide tijden in of laat beide leeg.")
+        if result["start_time"] and result["end_time"] <= result["start_time"]:
             raise DomainError(422, "Eindtijd moet na de starttijd liggen (binnen dezelfde dag).")
     return result
 

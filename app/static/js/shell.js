@@ -1,10 +1,12 @@
+import { gamesView, bindGames } from './games/index.js';
 import { state } from './state.js';
-import { $, avatar, esc, personName, plusDay, today, uuid } from './helpers.js';
+import { $, avatar, esc, fmt, parseDay, personName, plusDay, today, uuid } from './helpers.js';
 import { api, mutate } from './api.js';
 import {
   calendarShell,
   eventLocalParts,
   renderCalendarStatus,
+  routineDetailCard,
   syncAgendaColumnWidths,
   updateHeaderDate
 } from './calendar.js';
@@ -12,13 +14,24 @@ import { homeView } from './home.js';
 import { groceriesView } from './groceries.js';
 import { stopPhotos, photosView, showPhoto } from './photos.js';
 import { icon } from './icons.js';
-import { childModeView } from './child-mode.js';
+import { childModeView, navigateChildRoutine, resetChildRoutineSelection } from './child-mode.js';
 import { requestReward, rewardsView } from './rewards.js';
 import { toast } from './dialogs.js';
 import { actions } from './actions.js';
-import { celebrateRoutineCompletion, celebrateTaskCompletion } from './celebrations.js';
+import {
+  celebrateRoutineCompletion,
+  celebrateTaskCompletion,
+  playCompletionSound,
+  playSupersonicCompletionSound,
+  prepareSupersonicCompletionSound,
+  prepareCompletionSound
+} from './celebrations.js';
 
 const taskHideTimers = new Map();
+let lastToday = '';
+let openedRoutine = null;
+let routinePanelHTML = '';
+let refreshQueued = false;
 
 function delayCompletedTaskHide(runId) {
   clearTimeout(taskHideTimers.get(runId));
@@ -44,23 +57,39 @@ export function applyTheme() {
   document.documentElement.style.colorScheme = state.darkMode ? 'dark' : 'light';
   $('meta[name="theme-color"]').content = state.darkMode ? '#171b18' : '#f7f5f0';
 }
+function stateQuery() {
+  const params = new URLSearchParams();
+  if (state.day) params.set('day', state.day);
+  if (state.tab === 'calendar' && state.sub === 'agenda' && state.view !== 'day')
+    params.set('period', state.view === 'week' ? 'week' : 'three-day');
+  return params.toString();
+}
 export async function refresh(force = false) {
   if (state.busy) {
+    refreshQueued ||= force;
     state.pendingRefresh = true;
     return;
   }
   state.busy = true;
   try {
-    const params = new URLSearchParams();
-    if (state.day) params.set('day', state.day);
-    if (state.tab === 'calendar' && state.sub === 'agenda' && state.view !== 'day')
-      params.set('period', state.view === 'week' ? 'week' : 'three-day');
-    const query = params.toString();
+    const currentDay = today();
+    // Follow today across midnight or tab suspension; preserve deliberate date browsing.
+    if (state.childMode || (lastToday && state.day === lastToday)) state.day = currentDay;
+    if (lastToday && state.childModeReturn?.day === lastToday)
+      state.childModeReturn.day = currentDay;
+    lastToday = currentDay;
+    const query = stateQuery();
     const fresh = await api('/api/state' + (query ? '?' + query : ''));
+    // Navigation may have changed the requested period while this response was in flight.
+    if (query !== stateQuery()) {
+      refreshQueued = true;
+      return;
+    }
     $('#connection').classList.add('hidden');
     const serialized = JSON.stringify(fresh);
     state.data = fresh;
     if (!state.day) state.day = fresh.day;
+    renderRoutinePanel();
     if (serialized !== state.lastJSON || force || state.pendingRefresh) {
       state.lastJSON = serialized;
       if (
@@ -93,6 +122,10 @@ export async function refresh(force = false) {
     }
   } finally {
     state.busy = false;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refresh(true);
+    }
   }
 }
 export function render() {
@@ -113,6 +146,7 @@ export function render() {
     state.tab === 'home' || state.tab === 'photos'
   );
   document.body.classList.toggle('child-mode', state.childMode);
+  $('#child-dashboard-tab').classList.toggle('hidden', !state.childMode);
   $('#child-profile-switcher').innerHTML = state.data.members
     .filter((member) => (member.role || 'child') === 'child')
     .map(
@@ -123,15 +157,17 @@ export function render() {
   updateHeaderDate();
   updateBrand();
   $('#app').innerHTML =
-    state.tab === 'calendar'
-      ? state.childMode
-        ? childModeView()
-        : calendarShell()
-      : state.tab === 'home'
-        ? homeView()
-        : state.tab === 'groceries'
-          ? groceriesView()
-          : photosView();
+    state.tab === 'child-dashboard'
+      ? childModeView()
+      : state.tab === 'calendar'
+        ? calendarShell()
+        : state.tab === 'games'
+          ? gamesView()
+          : state.tab === 'home'
+            ? homeView()
+            : state.tab === 'groceries'
+              ? groceriesView()
+              : photosView();
   renderCalendarStatus();
   const plannerNav = $('.subnav');
   if (plannerNav) {
@@ -181,17 +217,129 @@ export function render() {
 }
 export async function operation(fn, button) {
   if (button) button.disabled = true;
+  if (button?.closest('#routine-dialog')) $('#routine-dialog-error').textContent = '';
   try {
     await fn();
     await refresh(true);
   } catch (e) {
     toast(e.message);
+    if (button?.closest('#routine-dialog')) $('#routine-dialog-error').textContent = e.message;
     if (e.status === 409) await refresh(true);
   } finally {
     if (button) button.disabled = false;
   }
 }
+function bindRunControls(root = document) {
+  root.querySelectorAll('[data-run]').forEach(
+    (b) =>
+      (b.onclick = () =>
+        operation(async () => {
+          const r = state.data.runs.find((x) => x.id === b.dataset.run),
+            step = Number(b.dataset.step),
+            completing = !r.done.includes(step),
+            done = completing ? [...r.done, step] : r.done.filter((s) => s !== step),
+            completingChildRoutine =
+              completing &&
+              r.kind === 'routines' &&
+              state.tab === 'child-dashboard' &&
+              done.length === r.body.steps.length;
+          const soundReady = completing ? prepareCompletionSound() : null;
+          const supersonicSoundReady = completingChildRoutine
+            ? prepareSupersonicCompletionSound()
+            : null;
+          await mutate('runs', r, {
+            done
+          });
+          if (soundReady) {
+            Promise.all([soundReady, supersonicSoundReady]).then(([ready, supersonicReady]) => {
+              if (!ready) return;
+              playCompletionSound();
+              if (completingChildRoutine && supersonicReady) {
+                playSupersonicCompletionSound();
+              }
+            });
+          }
+          if (r.kind === 'tasks') {
+            if (completing) delayCompletedTaskHide(r.id);
+            else cancelCompletedTaskHide(r.id);
+          }
+          if (completing) {
+            if (r.kind === 'routines') {
+              if (state.tab === 'child-dashboard') celebrateTaskCompletion(b);
+              if (done.length === r.body.steps.length)
+                celebrateRoutineCompletion(
+                  personName(r.member),
+                  b.closest('dialog') || document.body
+                );
+            } else celebrateTaskCompletion(b);
+          }
+        }, b))
+  );
+}
+function renderRoutinePanel() {
+  const dialog = $('#routine-dialog');
+  if (!openedRoutine || !dialog.open) return;
+  const matchingRuns = state.data.runs.filter(
+    (run) =>
+      run.kind === 'routines' &&
+      run.day === openedRoutine.day &&
+      run.template_id === openedRoutine.id &&
+      (!state.member || run.member === state.member)
+  );
+  const selected = matchingRuns.find((run) => run.id === openedRoutine.runId);
+  const group = selected
+    ? matchingRuns.filter((run) => JSON.stringify(run.body) === JSON.stringify(selected.body))
+    : [];
+  const content = group.length
+    ? routineDetailCard(group, false)
+    : '<p>Deze routine is niet meer beschikbaar in deze selectie.</p>';
+  const body = $('#routine-dialog-body');
+  if (routinePanelHTML === content) return;
+  routinePanelHTML = content;
+  const active = dialog.contains(document.activeElement) ? document.activeElement : null;
+  const focusedRun = active?.dataset.run,
+    focusedStep = active?.dataset.step;
+  body.innerHTML = content;
+  bindRunControls(body);
+  if (focusedRun)
+    body.querySelector(`[data-run="${focusedRun}"][data-step="${focusedStep}"]`)?.focus();
+}
+function openRoutinePanel(button) {
+  const dialog = $('#routine-dialog');
+  openedRoutine = {
+    id: button.dataset.openRoutine,
+    day: button.dataset.routineDay,
+    runId: button.dataset.routineRun
+  };
+  routinePanelHTML = '';
+  $('#routine-dialog-error').textContent = '';
+  $('#routine-dialog-title').textContent =
+    `Routine · ${fmt(parseDay(openedRoutine.day), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`;
+  $('#routine-dialog-close').onclick = () => dialog.close();
+  dialog.onclose = () => {
+    const previous = openedRoutine;
+    openedRoutine = null;
+    if (!previous) return;
+    const source =
+      document.querySelector(`[data-routine-run="${previous.runId}"]`) ||
+      document.querySelector(
+        `[data-open-routine="${previous.id}"][data-routine-day="${previous.day}"]`
+      );
+    source?.focus();
+  };
+  if (state.day !== openedRoutine.day) {
+    state.day = openedRoutine.day;
+    render();
+    refresh(true);
+  }
+  dialog.showModal();
+  renderRoutinePanel();
+}
 export function bindContent() {
+  bindGames();
+  document.querySelectorAll('[data-open-routine]').forEach((button) => {
+    button.onclick = () => openRoutinePanel(button);
+  });
   document.querySelectorAll('[data-child-mode="enter"]').forEach(
     (button) =>
       (button.onclick = () => {
@@ -200,28 +348,20 @@ export function bindContent() {
             member.id === button.dataset.childProfile && (member.role || 'child') === 'child'
         );
         if (!selectedChild) return;
-        state.childModeReturn = {
-          tab: state.tab,
-          sub: state.sub,
-          member: state.member,
-          day: state.day,
-          view: state.view
-        };
+        if (!state.childMode)
+          state.childModeReturn = {
+            tab: state.tab,
+            sub: state.sub,
+            member: state.member,
+            day: state.day,
+            view: state.view
+          };
         state.childMode = true;
-        state.tab = 'calendar';
+        state.tab = 'child-dashboard';
         state.member = selectedChild.id;
         state.day = today();
         state.view = 'day';
-        refresh(true);
-      })
-  );
-  document.querySelectorAll('[data-child-mode="exit"]').forEach(
-    (button) =>
-      (button.onclick = () => {
-        state.childMode = false;
-        if (state.childModeReturn) Object.assign(state, state.childModeReturn);
-        state.childModeReturn = null;
-        render();
+        resetChildRoutineSelection();
         refresh(true);
       })
   );
@@ -236,9 +376,23 @@ export function bindContent() {
         render();
       })
   );
-  document
-    .querySelectorAll('[data-tab]')
-    .forEach((b) => (b.onclick = () => navigate(b.dataset.tab, b.dataset.sub)));
+  document.querySelectorAll('[data-child-routine-nav]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        if (navigateChildRoutine(Number(button.dataset.childRoutineNav))) render();
+      })
+  );
+  document.querySelectorAll('[data-tab]').forEach(
+    (button) =>
+      (button.onclick = () => {
+        if (state.childMode && button.dataset.tab === 'calendar') {
+          state.childMode = false;
+          if (state.childModeReturn) Object.assign(state, state.childModeReturn);
+          state.childModeReturn = null;
+        }
+        navigate(button.dataset.tab, button.dataset.sub);
+      })
+  );
   document.querySelectorAll('[data-member]').forEach(
     (b) =>
       (b.onclick = () => {
@@ -289,29 +443,7 @@ export function bindContent() {
         );
       })
   );
-  document.querySelectorAll('[data-run]').forEach(
-    (b) =>
-      (b.onclick = () =>
-        operation(async () => {
-          const r = state.data.runs.find((x) => x.id === b.dataset.run),
-            step = Number(b.dataset.step),
-            completing = !r.done.includes(step),
-            done = completing ? [...r.done, step] : r.done.filter((s) => s !== step);
-          await mutate('runs', r, {
-            done
-          });
-          if (r.kind === 'tasks') {
-            if (completing) delayCompletedTaskHide(r.id);
-            else cancelCompletedTaskHide(r.id);
-          }
-          if (completing) {
-            if (r.kind === 'routines') {
-              if (done.length === r.body.steps.length)
-                celebrateRoutineCompletion(personName(r.member));
-            } else celebrateTaskCompletion(b);
-          }
-        }, b))
-  );
+  bindRunControls();
   document.querySelectorAll('[data-grocery]').forEach(
     (b) =>
       (b.onclick = () =>
@@ -393,6 +525,7 @@ export function navigate(next, section) {
   if (section) state.sub = section;
   clearTimeout(state.photoTimer);
   render();
+  if (state.tab === 'calendar' && state.sub === 'agenda' && !state.childMode) refresh(true);
 }
 export async function action(name, button) {
   if (name === 'admin') return actions.openAdmin();

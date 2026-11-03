@@ -1,6 +1,6 @@
 """HTTP request envelopes; persisted entity validation lives in validation.py."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 
 class Login(BaseModel):
@@ -24,3 +24,27 @@ class RewardRequestInput(BaseModel):
 class RewardDecisionInput(BaseModel):
     request_id: str = Field(min_length=8, max_length=100)
     action: str
+
+
+class PointAdjustmentInput(BaseModel):
+    request_id: str = Field(min_length=8, max_length=100)
+    member_id: str
+    amount: int = Field(strict=True, ge=-100000, le=100000)
+    reason: str = Field(default="", max_length=200)
+
+
+class GamePriceInput(BaseModel):
+    price: int = Field(strict=True, ge=1, le=100000)
+    version: int = Field(strict=True, ge=0)
+
+
+class GamePurchaseInput(GamePriceInput):
+    request_id: str = Field(min_length=8, max_length=100)
+    member_id: str = Field(max_length=100)
+
+
+class GameActionInput(BaseModel):
+    request_id: str = Field(min_length=8, max_length=100)
+    version: int = Field(strict=True, ge=1)
+    action: str = Field(max_length=20)
+    value: StrictInt | StrictStr | None = None
