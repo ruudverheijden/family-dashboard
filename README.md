@@ -219,7 +219,9 @@ Maak vóór een update een back-up en voer `docker compose pull` en
 `docker compose up -d` uit. Gebruik je een vaste versietag, wijzig die dan eerst
 naar de gewenste versie. Kies in Portainer **Update the stack** en laat Portainer
 de image opnieuw ophalen.
-Behoud dezelfde stacknaam en volumes.
+Behoud dezelfde stacknaam en volumes. Herlaad na de update het dashboard op
+apparaten waar het nog openstaat. Gewijzigde frontendbestanden krijgen een
+nieuw adres, zodat de browser de bijbehorende navigatie en opmaak ophaalt.
 
 Gebruik deze versie op een vertrouwd thuisnetwerk en stel geen publieke
 router-port-forward in. Stel `COOKIE_SECURE=true` in als je uitsluitend HTTPS gebruikt.

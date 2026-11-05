@@ -17,6 +17,19 @@ PNG = base64.b64decode(
 )
 
 
+def test_games_and_immich_open_distinct_views(dashboard):
+    dashboard.get_by_role("button", name="Immich", exact=True).click()
+    album_picker = dashboard.get_by_role("button", name="Albums kiezen")
+    expect(album_picker).to_be_visible()
+
+    dashboard.get_by_role("button", name="Spelletjes", exact=True).click()
+    expect(dashboard.get_by_role("heading", name="Spelletjes", exact=True)).to_be_visible()
+    expect(album_picker).to_have_count(0)
+
+    dashboard.get_by_role("button", name="Immich", exact=True).click()
+    expect(album_picker).to_be_visible()
+
+
 def prepare(page):
     url = page.url.rstrip("/")
     assert page.request.post(url + "/api/login", headers=HEAD, data={"password": PASSWORD}).ok

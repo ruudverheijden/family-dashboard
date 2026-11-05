@@ -162,3 +162,23 @@ Niet-commercieel gebruiken, aanpassen en delen is toegestaan onder de licentievo
 De broncode is beschikbaar; de licentie beperkt commercieel gebruik en is geen
 OSI-open-sourcelicentie. Componenten van derden behouden hun eigen licenties.
 
+
+## Publiceren vanuit GitHub Actions
+
+1. Stel in GitHub onder **Settings → Secrets and variables → Actions** het
+   repositorygeheim `DOCKERHUB_TOKEN` in. Gebruik een token van `ruudv` met
+   schrijfrechten voor de Docker Hub-repository.
+2. Werk het versielabel in `Dockerfile` en de versie in `/api/health` bij en
+   zet de releasewijzigingen op `main`.
+3. Kies **Actions → Release Docker Hub → Run workflow**, selecteer `main` en
+   vul de versie in, bijvoorbeeld `0.3.1`.
+4. Controleer de samenvatting. De workflow publiceert na de backend-,
+   container- en browsertests en verifieert dat de versietag en `latest`
+   dezelfde digest hebben en Linux amd64 en arm64 aanbieden.
+
+Elke uitvoering gebruikt de commit die bij het starten is geselecteerd.
+Bij een fout na het publiceren controleer je eerst de bestaande tags en
+eventuele nieuwere releases voordat je opnieuw probeert. Voor herstel in
+Portainer maak je eerst een back-up, zet je `DASHBOARD_IMAGE` op de gewenste
+eerdere versie en laat je de stack de image opnieuw ophalen met dezelfde
+volumes. Gebruik bij een incompatibele database de bijbehorende back-up.

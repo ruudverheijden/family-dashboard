@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import stat
 import uuid
@@ -53,6 +54,37 @@ def create(c, kind, body, id=None, version=0, request_id=None, action="save"):
 
 def test_health_reports_release_version(client):
     assert client.get("/api/health").json() == {"status": "ok", "version": "0.3.0"}
+
+
+def test_frontend_update_changes_module_graph_url(client, tmp_path, monkeypatch):
+    from app import application
+
+    def frontend_path(response):
+        assert response.headers["Cache-Control"] == "no-cache"
+        return re.search(r'src="(/frontend/[a-f0-9]+)/app\.js"', response.text)[1]
+
+    original = frontend_path(client.get("/"))
+    assert client.get(f"{original}/app.js").status_code == 200
+    assert client.get(f"{original}/js/shell.js").status_code == 200
+    assert client.get(f"{original}/style.css").status_code == 200
+
+    static = tmp_path / "static"
+    (static / "js").mkdir(parents=True)
+    for name in ("index.html", "app.js"):
+        (static / name).write_bytes((application.STATIC / name).read_bytes())
+    (static / "js/shell.js").write_text("// Previous navigation", encoding="utf-8")
+    monkeypatch.setattr(application, "STATIC", static)
+    config = AppConfig(
+        tmp_path / "test-data",
+        tmp_path / "test-cache",
+        "fictional-test-password",
+        background_enabled=False,
+    )
+    with TestClient(create_app(config)) as previous:
+        previous_path = frontend_path(previous.get("/"))
+    (static / "js/shell.js").write_text("// Updated navigation", encoding="utf-8")
+    with TestClient(create_app(config)) as updated:
+        assert frontend_path(updated.get("/")) != previous_path
 
 
 def test_calendar_sync_is_limited_to_three_minutes(monkeypatch):

@@ -1059,3 +1059,14 @@ voorbehouden aan het voltooien van de volledige routine.
 - Bij de volgende poging zijn `0.3.0` en `latest` gepubliceerd. Controle op
   Docker Hub bevestigde voor beide tags Linux amd64 en arm64 en dezelfde digest:
   `sha256:d7cac0393ebaea1d9922ebc47885e7bacfd8639ebd3272baa71e432f90a94442`.
+
+## Hoofdnavigatie na een frontendupdate — 5 november 2026
+
+- Backend: 130 geslaagd, 4 optionele containercontroles overgeslagen.
+  De regressietest bevestigt dat een wijziging in een geneste navigatiemodule
+  het adres van de volledige moduleboom wijzigt.
+- Playwright: de regressietest voor wisselen tussen Immich en Spelletjes
+  is geslaagd in Chromium en WebKit.
+- Ruff lint en opmaak, CSS-opmaak, Prettier, JavaScript-syntax, modulegrenzen
+  en `git diff --check` zijn geslaagd.
+- De installatie van de gebruiker is niet bijgewerkt of handmatig gecontroleerd.

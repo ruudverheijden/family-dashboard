@@ -1,10 +1,11 @@
 """Application composition. Explicit configurations never read .env."""
 
 from contextlib import asynccontextmanager
+from hashlib import sha256
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import scheduler
@@ -44,10 +45,24 @@ def create_app(config: AppConfig | None = None):
         )
 
     app.include_router(router)
+    # Relative imports keep the entire module graph under the same cache key.
+    frontend = sha256()
+    for asset in sorted(STATIC.rglob("*")):
+        if asset.suffix in {".html", ".css", ".js"} and asset.is_file():
+            frontend.update(asset.relative_to(STATIC).as_posix().encode())
+            frontend.update(asset.read_bytes())
+    frontend_path = f"/frontend/{frontend.hexdigest()[:16]}"
+    app.mount(frontend_path, StaticFiles(directory=STATIC), name="frontend")
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    index_html = (
+        (STATIC / "index.html")
+        .read_text(encoding="utf-8")
+        .replace('"/static/app.js"', f'"{frontend_path}/app.js"')
+        .replace('"/static/style.css"', f'"{frontend_path}/style.css"')
+    )
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC / "index.html")
+        return HTMLResponse(index_html, headers={"Cache-Control": "no-cache"})
 
     return app

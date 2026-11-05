@@ -1,0 +1,82 @@
+name: Release Docker Hub
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versie uit Dockerfile en /api/health, bijvoorbeeld 0.3.1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-hub-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Controleer branch en versie
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main || ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Kies main en vul een versie in zoals 0.3.1." >&2
+            exit 1
+          fi
+          grep -Fx "LABEL org.opencontainers.image.version=\"$VERSION\"" Dockerfile
+          grep -F "\"version\": \"$VERSION\"" app/routes.py
+
+  checks:
+    needs: validate
+    uses: ./.github/workflows/checks.yml
+
+  browsers:
+    needs: validate
+    uses: ./.github/workflows/browser-tests.yml
+
+  publish:
+    needs: [checks, browsers]
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: docker.io/ruudv/family-dashboard
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ruudv
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+      - name: Verifieer beide tags in Docker Hub
+        env:
+          EXPECTED_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$EXPECTED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          for tag in "$VERSION" latest; do
+            metadata=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:$tag")
+            jq -e --arg digest "$EXPECTED_DIGEST" '
+              .digest == $digest and
+              ([.manifests[].platform | select(.os == "linux") | .architecture] |
+                (index("amd64") != null and index("arm64") != null))
+            ' <<< "$metadata"
+          done
+          printf 'Published `%s:%s` and `:latest` at `%s`.\n' \
+            "$IMAGE" "$VERSION" "$EXPECTED_DIGEST" >> "$GITHUB_STEP_SUMMARY"
