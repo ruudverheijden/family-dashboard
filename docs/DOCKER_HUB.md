@@ -12,8 +12,9 @@ fotolijst samen op één scherm.
 
 ## Beschikbare image
 
-`ruudv/family-dashboard:0.3.0` — **Linux amd64 en arm64**, waaronder de
-Synology DS918+ (amd64). Er is geen `latest`-tag beschikbaar.
+Compose gebruikt standaard `ruudv/family-dashboard:latest` voor **Linux amd64 en arm64**,
+waaronder de Synology DS918+ (amd64). Gebruik `ruudv/family-dashboard:0.3.0`
+om de versie vast te zetten.
 
 0.2.1 bevat de beveiligingsupdate voor python-dotenv en verwijdert pip uit de runtime.
 De volledige scan meldt
@@ -30,7 +31,7 @@ Sla de volgende YAML op als `compose.yaml`. In Portainer kun je hem plakken via
 ```yaml
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:latest}
     user: "0:0"
     command:
       - python
@@ -68,7 +69,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:latest}
     depends_on:
       storage-init:
         condition: service_completed_successfully

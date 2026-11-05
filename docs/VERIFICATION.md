@@ -1044,3 +1044,15 @@ voorbehouden aan het voltooien van de volledige routine.
 - De release-image is met een vernieuwde basisimage en zonder automatische
   Git-bronmetadata gebouwd voor Linux amd64 en arm64. Beide varianten zijn lokaal
   gestart en gaven via `/api/health` status 200 en versie `0.3.0`.
+- Browsermatrix voor 0.3.0: 240 geslaagd, 4 mislukt en 122 fouten.
+  De twee varianten van de test voor een routine zonder tijdvenster mislukten
+  in Chromium en WebKit. Firefox kon niet starten (122 tests).
+
+## Compose gebruikt standaard latest — 5 november 2026
+
+- `docker compose config` met een fictief wachtwoord en zonder lokale `.env`
+  bevestigt dat beide services standaard `latest` gebruiken en de expliciete
+  override naar `0.3.0` respecteren. De volledige Compose-voorbeelden in de
+  README en het Docker Hub-overzicht zijn identiek aan `compose.yaml`.
+- Beide lokale Docker-tags verwijzen naar dezelfde 0.3.0-image. Docker Hub
+  weigerde de push met `insufficient_scope`; de publicatie is niet bevestigd.

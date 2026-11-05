@@ -30,9 +30,9 @@ Beloningsaanvragen zijn zichtbaar voor het gezin; het gezinsprofiel is een filte
 De kant-en-klare image staat op [Docker Hub: ruudv/family-dashboard](https://hub.docker.com/r/ruudv/family-dashboard).
 Je hoeft de broncode niet te downloaden of zelf te bouwen.
 
-**Tag:** `ruudv/family-dashboard:0.3.0`. Deze gepubliceerde versie ondersteunt
+Compose gebruikt standaard `ruudv/family-dashboard:latest`. De image ondersteunt
 **Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+, en **Linux arm64**.
-Gebruik de expliciete versietag; er wordt geen `latest`-tag aangeboden.
+Zet `DASHBOARD_IMAGE=ruudv/family-dashboard:0.3.0` om een versie vast te zetten.
 
 ### Docker Compose
 
@@ -42,7 +42,7 @@ sla onderstaande configuratie op als `compose.yaml`:
 ```yaml
 services:
   storage-init:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:latest}
     user: "0:0"
     command:
       - python
@@ -80,7 +80,7 @@ services:
       disable: true
     restart: "no"
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:0.3.0}
+    image: ${DASHBOARD_IMAGE:-ruudv/family-dashboard:latest}
     depends_on:
       storage-init:
         condition: service_completed_successfully
@@ -215,9 +215,10 @@ kopieer geen live databasebestand. Browservoorkeuren onder **Dit apparaat**
 worden bij een nieuw adres opnieuw ingesteld. Bij herstel is
 `family-backup.db` de naam van je back-upbestand, niet de naam van de actieve database.
 
-Maak vóór een update een back-up, wijzig de image-tag naar de gewenste gepubliceerde
-versie en voer `docker compose pull` en `docker compose up -d` uit.
-In Portainer wijzig je de tag in de stack-editor en kies je **Update the stack**.
+Maak vóór een update een back-up en voer `docker compose pull` en
+`docker compose up -d` uit. Gebruik je een vaste versietag, wijzig die dan eerst
+naar de gewenste versie. Kies in Portainer **Update the stack** en laat Portainer
+de image opnieuw ophalen.
 Behoud dezelfde stacknaam en volumes.
 
 Gebruik deze versie op een vertrouwd thuisnetwerk en stel geen publieke
@@ -247,7 +248,7 @@ De standaardpoort luistert op de netwerkinterfaces van de Docker-host. Beperk in
 | Instelling | Plaats | Betekenis |
 |---|---|---|
 | `ADMIN_PASSWORD` | `.env` | Beheerwachtwoord; wijzigen vereist containerherstart |
-| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:0.3.0` |
+| `DASHBOARD_IMAGE` | `.env` / Portainer | Image voor beide services; standaard `ruudv/family-dashboard:latest` |
 | `DATA_VOLUME`, `CACHE_VOLUME` | `.env` / Portainer | Optionele absolute hostpaden; standaard benoemde Docker-volumes |
 | `PORT` | `.env` | Gepubliceerde poort; standaard 8080 |
 | `TZ` | `.env` | Containertijdzone; standaard Europe/Amsterdam |
