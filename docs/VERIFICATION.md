@@ -1070,3 +1070,11 @@ voorbehouden aan het voltooien van de volledige routine.
 - Ruff lint en opmaak, CSS-opmaak, Prettier, JavaScript-syntax, modulegrenzen
   en `git diff --check` zijn geslaagd.
 - De installatie van de gebruiker is niet bijgewerkt of handmatig gecontroleerd.
+
+## Spelletjes-icoon in de hoofdnavigatie — 5 november 2026
+
+- Playwright (UI-01): 8 controles geslaagd in Chromium en WebKit op 390, 760,
+  761 en 850 px. Het gamepad-icoon blijft zichtbaar met en zonder tablabels.
+- Visueel: Chromium-schermafbeeldingen op 390 en 850 px bekeken.
+- Ruff lint en opmaak, Prettier, JavaScript-syntax, modulegrenzen en
+  `git diff --check` zijn geslaagd.

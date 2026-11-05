@@ -1,5 +1,7 @@
 export const paths = {
   calendar: 'M4 5h16v16H4z M4 10h16 M8 3v4 M16 3v4 M8 14h2 M14 14h2 M8 18h2',
+  gamepad:
+    'M7.5 6h9a4 4 0 0 1 4 3.4l1 6.1a2.4 2.4 0 0 1-4.1 2l-2.2-2.2H8.8l-2.2 2.2a2.4 2.4 0 0 1-4.1-2l1-6.1A4 4 0 0 1 7.5 6z M6 10.5h4 M8 8.5v4 M15.5 10.5h.01 M18 12.5h.01',
   home: 'm3 11 9-8 9 8 M5 10v11h14V10 M9 21v-7h6v7',
   image: 'M3 4h18v16H3z m0 12 6-6 5 5 3-3 4 4 M15 8h.01',
   settings:

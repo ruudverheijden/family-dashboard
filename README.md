@@ -2,7 +2,7 @@
 
 Een rustige, Nederlandstalige plek voor agenda, taken, routines, boodschappen en herinneringen. Zelf te hosten, zonder abonnement, NAS-afhankelijkheid of externe frontenddiensten.
 
-**Versie 0.3.0 — met kinderspellen, routineplanning en automatische dagwisseling.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
+**Versie 0.3.1 — met kinderspellen, routineplanning en automatische dagwisseling.** De lokale gezinsplanner is bruikbaar. De eigenaar heeft de agenda-integratie, Home Assistant en Immich handmatig gevalideerd; specifieke randgevallen en technische P0-acceptatie staan nog open. Zie [verificatie en beperkingen](docs/VERIFICATION.md) en het [requirements- en TODO-overzicht](docs/REQUIREMENTS.md).
 
 ![Samen gezinsdashboard](docs/screenshot.png)
 
@@ -32,7 +32,7 @@ Je hoeft de broncode niet te downloaden of zelf te bouwen.
 
 Compose gebruikt standaard `ruudv/family-dashboard:latest`. De image ondersteunt
 **Linux amd64 (Intel/AMD 64-bit)**, waaronder de Synology DS918+, en **Linux arm64**.
-Zet `DASHBOARD_IMAGE=ruudv/family-dashboard:0.3.0` om een versie vast te zetten.
+Zet `DASHBOARD_IMAGE=ruudv/family-dashboard:0.3.1` om een versie vast te zetten.
 
 ### Docker Compose
 

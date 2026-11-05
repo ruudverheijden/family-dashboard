@@ -73,5 +73,7 @@ def test_header_tab_labels_hide_when_space_is_limited(dashboard, width, labels_v
         else:
             expect(text).to_be_hidden()
 
-    game_icon = navigation.get_by_role("button", name="Spelletjes").locator('[aria-hidden="true"]')
+    game_icon = navigation.get_by_role("button", name="Spelletjes").locator(
+        '[data-icon="gamepad"] svg[aria-hidden="true"]'
+    )
     expect(game_icon).to_be_visible()

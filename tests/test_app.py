@@ -53,7 +53,7 @@ def create(c, kind, body, id=None, version=0, request_id=None, action="save"):
 
 
 def test_health_reports_release_version(client):
-    assert client.get("/api/health").json() == {"status": "ok", "version": "0.3.0"}
+    assert client.get("/api/health").json() == {"status": "ok", "version": "0.3.1"}
 
 
 def test_frontend_update_changes_module_graph_url(client, tmp_path, monkeypatch):

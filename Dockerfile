@@ -16,7 +16,7 @@ RUN apk upgrade --no-cache \
 COPY app ./app
 COPY LICENSE ./LICENSE
 LABEL org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"
-LABEL org.opencontainers.image.version="0.3.0"
+LABEL org.opencontainers.image.version="0.3.1"
 USER family
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)"

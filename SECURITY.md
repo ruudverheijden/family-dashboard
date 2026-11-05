@@ -1,6 +1,6 @@
 # Beveiliging
 
-Dit is versie 0.3.0 voor een vertrouwd thuisnetwerk. Dagelijkse bediening is bewust gedeeld: iedereen die de app bereikt kan gezinsgegevens lezen en taken, routines en boodschappen wijzigen. Profielkeuze is een filter, geen authenticatie. Beheerinstellingen en gezinsprofielen vereisen een beheerwachtwoord.
+Dit is versie 0.3.1 voor een vertrouwd thuisnetwerk. Dagelijkse bediening is bewust gedeeld: iedereen die de app bereikt kan gezinsgegevens lezen en taken, routines en boodschappen wijzigen. Profielkeuze is een filter, geen authenticatie. Beheerinstellingen en gezinsprofielen vereisen een beheerwachtwoord.
 
 - Kies een eigen `ADMIN_PASSWORD`. Beheersessies verlopen na 30 minuten en bij serverherstart. Vijf foutieve pogingen per IP blokkeren aanmelden vijf minuten. Daarnaast geldt voor alle IP-adressen samen een limiet van vijf aanmeldpogingen ineens en één extra poging per tien seconden. Die gedeelde limiet wordt in SQLite bewaard en geldt over worker- en serverherstarts heen. Configureer ook limieten op de reverse proxy als je die inzet.
 - Docker publiceert de poort op de netwerkinterfaces van de host zodat apparaten op het thuisnetwerk de app kunnen bereiken. Beperk inkomend verkeer met de hostfirewall tot het vertrouwde LAN en stel geen router-port-forward of andere publieke toegang in. Gebruik HTTPS via een eigen reverse proxy als het netwerk niet volledig vertrouwd is; stel daarbij `COOKIE_SECURE=true` in. Stuur de oorspronkelijke Host en scheme correct door; vertrouw proxyheaders uitsluitend van de proxy.

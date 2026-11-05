@@ -13,7 +13,7 @@ fotolijst samen op één scherm.
 ## Beschikbare image
 
 Compose gebruikt standaard `ruudv/family-dashboard:latest` voor **Linux amd64 en arm64**,
-waaronder de Synology DS918+ (amd64). Gebruik `ruudv/family-dashboard:0.3.0`
+waaronder de Synology DS918+ (amd64). Gebruik `ruudv/family-dashboard:0.3.1`
 om de versie vast te zetten.
 
 0.2.1 bevat de beveiligingsupdate voor python-dotenv en verwijdert pip uit de runtime.
