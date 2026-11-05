@@ -1056,3 +1056,6 @@ voorbehouden aan het voltooien van de volledige routine.
   README en het Docker Hub-overzicht zijn identiek aan `compose.yaml`.
 - Beide lokale Docker-tags verwijzen naar dezelfde 0.3.0-image. Docker Hub
   weigerde de push met `insufficient_scope`; de publicatie is niet bevestigd.
+- Bij de volgende poging zijn `0.3.0` en `latest` gepubliceerd. Controle op
+  Docker Hub bevestigde voor beide tags Linux amd64 en arm64 en dezelfde digest:
+  `sha256:d7cac0393ebaea1d9922ebc47885e7bacfd8639ebd3272baa71e432f90a94442`.
