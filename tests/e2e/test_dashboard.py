@@ -1060,6 +1060,10 @@ def test_media_icons_are_shared_across_all_icon_pickers(dashboard):
 def test_routine_progress_new_day_RT01_04(dashboard):
     p = dashboard
     p.set_viewport_size({"width": 390, "height": 844})
+    # Keep background polling from starting a fetch during the deliberate reload.
+    p.clock.install()
+    p.clock.pause_at(datetime.now(timezone.utc) + timedelta(seconds=1))
+    p.reload()
     login(p)
     add_member(p)
     section(p, "Routines")
@@ -1602,7 +1606,7 @@ def test_forced_refresh_waits_for_an_inflight_dashboard_request(dashboard):
             """async url => {
                 const {refresh} = await import(url);
                 window.queuedRefreshDone = false;
-                window.queuedRefresh = refresh(true).then(() => { window.queuedRefreshDone = true; });
+                refresh(true).then(() => { window.queuedRefreshDone = true; });
                 await Promise.resolve();
                 return window.queuedRefreshDone;
             }""",
@@ -1611,7 +1615,8 @@ def test_forced_refresh_waits_for_an_inflight_dashboard_request(dashboard):
     finally:
         for route in held:
             route.continue_()
-    p.evaluate("() => window.queuedRefresh")
+    p.clock.resume()
+    p.wait_for_function("window.queuedRefreshDone")
 
 
 @pytest.mark.parametrize("width", [390, 1200])

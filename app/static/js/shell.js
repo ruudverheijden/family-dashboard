@@ -67,8 +67,9 @@ function stateQuery() {
 }
 export async function refresh(force = false) {
   if (state.busy) {
-    refreshQueued = true;
     state.pendingRefresh = true;
+    if (!force) return;
+    refreshQueued = true;
     return new Promise((resolve) => queuedRefreshWaiters.push(resolve));
   }
   state.busy = true;
