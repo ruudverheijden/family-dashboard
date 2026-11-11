@@ -14,9 +14,10 @@ MIN_TOUCH_TARGET = 48 - 0.001
 
 
 def assert_touch_targets(page):
-    undersized = page.locator("button:visible").evaluate_all(
-        """(buttons, minimum) => buttons.flatMap(button => {
+    undersized = page.evaluate(
+        """(minimum) => Array.from(document.querySelectorAll('button')).flatMap(button => {
             const {width, height} = button.getBoundingClientRect();
+            if (!width || !height || getComputedStyle(button).visibility !== 'visible') return [];
             return width < minimum || height < minimum
                 ? [{label: button.getAttribute('aria-label') || button.textContent, width, height}]
                 : [];
