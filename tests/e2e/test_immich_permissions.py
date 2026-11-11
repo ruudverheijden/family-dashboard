@@ -47,29 +47,36 @@ def test_only_next_five_photos_are_preloaded_and_reused(dashboard, shuffle):
         '(shuffle) => localStorage.setItem("samen-screen", JSON.stringify({shuffle}))', shuffle
     )
     page.reload()
+    entry_url = page.locator('script[type="module"]').get_attribute("src")
+    module_url = entry_url.rsplit("/", 1)[0] + "/js/photos.js"
     assert requests == []
     page.get_by_role("button", name="Immich", exact=True).click()
-    wait_for_preloads(page)
+    wait_for_preloads(page, module_url)
     expected = page.evaluate(
-        "async () => (await import('/static/js/photos.js')).photoOrder.slice(0,6).map(p => p.id)"
+        "async (url) => (await import(url)).photoOrder.slice(0,6).map(p => p.id)",
+        module_url,
     )
     assert set(requests) == set(expected)
     assert len(requests) == 6
     page.get_by_role("button", name="Diavoorstelling pauzeren").click()
-    next_id = page.evaluate("async () => (await import('/static/js/photos.js')).photoOrder[1].id")
+    next_id = page.evaluate("async (url) => (await import(url)).photoOrder[1].id", module_url)
     page.get_by_role("button", name="Volgende foto").click()
     expect(page.locator("#photo")).to_have_attribute("data-asset-id", next_id)
-    wait_for_preloads(page)
+    wait_for_preloads(page, module_url)
     assert len(requests) == 7
     assert len(set(requests)) == 7
     page.get_by_role("button", name="Kalender", exact=True).click()
-    assert page.evaluate("async () => (await import('/static/js/photos.js')).photoCache.size") == 0
+    assert page.evaluate("async (url) => (await import(url)).photoCache.size", module_url) == 0
 
 
-def wait_for_preloads(page):
+def wait_for_preloads(page, module_url):
     for _ in range(100):
         if page.evaluate(
-            "async () => { const {photoCache} = await import('/static/js/photos.js'); return photoCache.size === 6 && [...photoCache.values()].every(e => e.url); }"
+            """async (url) => {
+                const {photoCache} = await import(url);
+                return photoCache.size === 6 && [...photoCache.values()].every(entry => entry.url);
+            }""",
+            module_url,
         ):
             return
         page.wait_for_timeout(20)

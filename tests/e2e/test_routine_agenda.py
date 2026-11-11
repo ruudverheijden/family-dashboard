@@ -303,11 +303,13 @@ def test_create_routine_without_time_in_editor(routines, clear_fields):
     expect(p.locator("#dialog")).to_be_hidden()
     section(p, "Agenda")
     p.get_by_role("button", name="Dag", exact=True).click()
+    agenda = p.get_by_label("Dagagenda", exact=True)
+    expect(agenda).to_be_visible()
     expect(
-        p.locator(".calendar-routine-row .agenda-routine").filter(has_text="Vrije routine")
+        agenda.locator(".calendar-routine-row .agenda-routine").filter(has_text="Vrije routine")
     ).to_be_visible()
     expect(
-        p.locator(".day-timeline .agenda-routine").filter(has_text="Vrije routine")
+        agenda.locator(".day-timeline .agenda-routine").filter(has_text="Vrije routine")
     ).to_have_count(0)
 
 

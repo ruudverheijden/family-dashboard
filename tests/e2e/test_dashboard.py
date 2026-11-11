@@ -13,6 +13,19 @@ from playwright.sync_api import expect
 MIN_TOUCH_TARGET = 48 - 0.001
 
 
+def assert_touch_targets(page):
+    undersized = page.locator("button:visible").evaluate_all(
+        """(buttons, minimum) => buttons.flatMap(button => {
+            const {width, height} = button.getBoundingClientRect();
+            return width < minimum || height < minimum
+                ? [{label: button.getAttribute('aria-label') || button.textContent, width, height}]
+                : [];
+        })""",
+        MIN_TOUCH_TARGET,
+    )
+    assert not undersized, undersized
+
+
 def test_three_day_agenda_shows_today_and_next_two_days(dashboard):
     p = dashboard
     today = date.fromisoformat(p.request.get(p.url + "api/state").json()["day"])
@@ -142,20 +155,25 @@ def test_navigation_responsive_UI01_09(dashboard, size):
         p.get_by_role("navigation", name="Hoofdnavigatie").get_by_role(
             "button", name=tab, exact=True
         ).click()
+        clock_button = p.locator("#clock-toggle")
+        clock_bounds = clock_button.bounding_box() if clock_button.is_visible() else None
         for button in p.locator(".main-tabs button:visible").all():
             expect(button).to_be_in_viewport()
+            if clock_bounds:
+                bounds = button.bounding_box()
+                assert (
+                    bounds["x"] + bounds["width"] <= clock_bounds["x"]
+                    or clock_bounds["x"] + clock_bounds["width"] <= bounds["x"]
+                    or bounds["y"] + bounds["height"] <= clock_bounds["y"]
+                    or clock_bounds["y"] + clock_bounds["height"] <= bounds["y"]
+                ), (tab, button.get_attribute("aria-label"), bounds, clock_bounds)
         assert p.evaluate("document.documentElement.scrollWidth <= innerWidth"), tab
     expect(p.locator(".date-nav h2")).to_have_text(title)
     expect(p.locator(".day-heading").first).to_contain_text("ma")
     for name in ["Taken", "Routines", "Boodschappen", "Beloningen", "Agenda"]:
         section(p, name)
         assert p.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    for b in p.locator("button:visible").all():
-        box = b.bounding_box()
-        assert box["width"] >= MIN_TOUCH_TARGET and box["height"] >= MIN_TOUCH_TARGET, (
-            b.inner_text(),
-            box,
-        )
+    assert_touch_targets(p)
 
 
 def test_shared_planner_date_and_groceries_top_level(dashboard):
@@ -1756,9 +1774,7 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     for card in p.locator(".child-welcome, .child-task, .child-routine-card, .child-rewards").all():
         bounds = card.bounding_box()
         assert bounds["x"] >= 0 and bounds["x"] + bounds["width"] <= size[0], bounds
-    for button in p.locator("button:visible").all():
-        bounds = button.bounding_box()
-        assert bounds["width"] >= MIN_TOUCH_TARGET and bounds["height"] >= MIN_TOUCH_TARGET, bounds
+    assert_touch_targets(p)
     expect(p.get_by_role("heading", name="Mijn taken")).to_be_visible()
     expect(p.get_by_role("heading", name="Mijn routines")).to_be_visible()
     expect(p.locator(".child-routine-card")).to_have_count(1)

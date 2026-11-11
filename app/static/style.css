@@ -1749,7 +1749,8 @@ textarea {
 .reward-admin-table {
   width: 100%;
   margin: 12px 0 0;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   font-size: 13px
 }
@@ -4664,6 +4665,7 @@ dialog::backdrop {
   }
 
   .child-mode .topbar .main-tabs button {
+    min-width: 48px;
     min-height: 48px
   }
 
@@ -4707,6 +4709,15 @@ dialog::backdrop {
     display: flex
   }
 
+  .child-mode .topbar #analog-clock {
+    max-width: 48px;
+    max-height: 48px
+  }
+
+  .child-mode .topbar .main-tabs {
+    flex-wrap: wrap
+  }
+
   .topbar #admin {
     flex: 0 0 48px;
     width: 48px;
@@ -4726,8 +4737,8 @@ dialog::backdrop {
   }
 }
 
-/* Keep the interactive clock clear of the centered navigation on tablet widths. */
-@media(min-width:761px) and (max-width:1300px) {
+/* Give navigation and the clock separate rows where they can overlap. */
+@media(min-width:761px) and (max-width:1500px) {
   .topbar {
     flex-wrap: wrap;
   }
@@ -4741,7 +4752,10 @@ dialog::backdrop {
   }
 
   .topbar .main-tabs {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }
 
