@@ -1615,9 +1615,18 @@ def test_admin_reward_list_spacing_and_price_alignment(dashboard, width):
         p.locator("#new-member").evaluate("(button) => getComputedStyle(button).marginTop")
         == "12px"
     )
-    assert p.locator(".reward-admin-table").evaluate(
-        "(table) => table.scrollWidth <= table.clientWidth"
+    widths = p.locator(".reward-admin-table").evaluate(
+        """table => ({
+            available: table.clientWidth,
+            content: table.scrollWidth,
+            cells: [...table.querySelectorAll('th, td')].map(cell => ({
+                text: cell.textContent,
+                available: cell.clientWidth,
+                content: cell.scrollWidth
+            }))
+        })"""
     )
+    assert widths["content"] <= widths["available"], widths
 
 
 def test_parent_can_adjust_member_points_without_a_reason(dashboard):
@@ -1838,6 +1847,7 @@ def test_child_mode_personal_tasks_routines_and_rewards(dashboard, size):
     expect(p.locator(".routine-celebration h2")).to_contain_text("Alex")
     p.wait_for_function("window.supersonicSoundStarts === 1")
     assert p.evaluate("window.supersonicDecodedBytes") > 0
+    p.get_by_role("button", name="Viering sluiten").click()
 
     p.get_by_role("button", name="Vraag aan").click()
     expect(p.get_by_role("button", name="Aangevraagd")).to_be_disabled()

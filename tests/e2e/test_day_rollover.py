@@ -32,7 +32,8 @@ def test_child_day_rollover_resets_daily_runs_and_shows_date(dashboard, resume):
     midnight = datetime.combine(
         day + timedelta(days=1), time(), ZoneInfo(initial["config"]["timezone"])
     )
-    p.clock.install(time=midnight - timedelta(seconds=10))
+    p.clock.install(time=midnight - timedelta(minutes=1))
+    p.clock.pause_at(midnight - timedelta(seconds=10))
     p.reload()
     p.get_by_role("button", name="Kindmodus voor Alex", exact=True).click()
     shown_date = p.locator(".child-welcome time")
@@ -76,7 +77,8 @@ def test_parent_day_rollover_preserves_explicit_date(dashboard, historical):
     midnight = datetime.combine(
         day + timedelta(days=1), time(), ZoneInfo(initial["config"]["timezone"])
     )
-    p.clock.install(time=midnight - timedelta(seconds=10))
+    p.clock.install(time=midnight - timedelta(minutes=1))
+    p.clock.pause_at(midnight - timedelta(seconds=10))
     p.reload()
     section(p, "Routines")
     if historical:
@@ -95,7 +97,8 @@ def test_parent_routine_follows_scheduled_days_and_keeps_completion_history(dash
     day = date.fromisoformat(initial["day"])
     zone = ZoneInfo(initial["config"]["timezone"])
     midnight = datetime.combine(day + timedelta(days=1), time(), zone)
-    p.clock.install(time=midnight - timedelta(seconds=10))
+    p.clock.install(time=midnight - timedelta(minutes=1))
+    p.clock.pause_at(midnight - timedelta(seconds=10))
     p.reload()
     login(p)
     add_member(p, "Alex")

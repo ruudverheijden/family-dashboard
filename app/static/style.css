@@ -1749,8 +1749,7 @@ textarea {
 .reward-admin-table {
   width: 100%;
   margin: 12px 0 0;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   table-layout: fixed;
   font-size: 13px
 }
@@ -1779,6 +1778,13 @@ textarea {
 .reward-admin-table tbody td:last-child {
   width: 132px;
   text-align: right
+}
+
+.reward-admin-table .small {
+  max-width: 100%;
+  padding-inline: 8px;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .reward-admin-name {
