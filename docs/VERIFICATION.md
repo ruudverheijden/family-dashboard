@@ -1089,3 +1089,7 @@ voorbehouden aan het voltooien van de volledige routine.
   WebKit, plus de gecontroleerde verversingsregressie in beide browsers. Firefox
   kon lokaal geen tijdelijk browserprofiel openen. De backend gaf 130 geslaagde
   tests en 4 overgeslagen optionele containercontroles.
+- GitHub Actions-run 43085992906 op `d1a7f30`: Chromium, Firefox en WebKit
+  geslaagd met 124 tests per browser. Na de overstap naar Node.js 24 zijn de
+  backend- en containerjobs op `932b0ef` geslaagd. De Chromium-job van run
+  43088318352 gaf 124 geslaagde tests en uploadde het Playwright-artefact.
