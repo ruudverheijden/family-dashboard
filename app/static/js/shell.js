@@ -32,6 +32,7 @@ let lastToday = '';
 let openedRoutine = null;
 let routinePanelHTML = '';
 let refreshQueued = false;
+let queuedRefreshWaiters = [];
 
 function delayCompletedTaskHide(runId) {
   clearTimeout(taskHideTimers.get(runId));
@@ -66,9 +67,9 @@ function stateQuery() {
 }
 export async function refresh(force = false) {
   if (state.busy) {
-    refreshQueued ||= force;
+    refreshQueued = true;
     state.pendingRefresh = true;
-    return;
+    return new Promise((resolve) => queuedRefreshWaiters.push(resolve));
   }
   state.busy = true;
   try {
@@ -124,7 +125,10 @@ export async function refresh(force = false) {
     state.busy = false;
     if (refreshQueued) {
       refreshQueued = false;
-      refresh(true);
+      const waiters = queuedRefreshWaiters;
+      queuedRefreshWaiters = [];
+      await refresh(true);
+      for (const resolve of waiters) resolve();
     }
   }
 }

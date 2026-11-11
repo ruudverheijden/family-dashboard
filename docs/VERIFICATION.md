@@ -1078,3 +1078,14 @@ voorbehouden aan het voltooien van de volledige routine.
 - Visueel: Chromium-schermafbeeldingen op 390 en 850 px bekeken.
 - Ruff lint en opmaak, Prettier, JavaScript-syntax, modulegrenzen en
   `git diff --check` zijn geslaagd.
+
+## Browseracceptatie voor 0.3.1 — 11 november 2026
+
+- De GitHub-traces bevestigen overlappende navigatie en klok, horizontale
+  overflow in kindmodus, een te smal aanraakdoel en een verouderde beloningenlijst
+  na een gelijktijdige verversing. De Immich-test las een tweede module-instantie
+  en de routinetest kon de weekagenda controleren terwijl de dagagenda nog laadde.
+- Lokaal op macOS: 38 gerichte Playwright-controles geslaagd in Chromium en
+  WebKit, plus de gecontroleerde verversingsregressie in beide browsers. Firefox
+  kon lokaal geen tijdelijk browserprofiel openen. De backend gaf 130 geslaagde
+  tests en 4 overgeslagen optionele containercontroles.

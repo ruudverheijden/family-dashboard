@@ -1586,6 +1586,34 @@ def test_points_reward_request_and_parent_approval_BEL01_05(dashboard):
     expect(p.get_by_text("Goedgekeurd", exact=True)).to_be_visible()
 
 
+def test_forced_refresh_waits_for_an_inflight_dashboard_request(dashboard):
+    p = dashboard
+    entry_url = p.locator('script[type="module"]').get_attribute("src")
+    shell_url = entry_url.rsplit("/", 1)[0] + "/js/shell.js"
+    p.clock.install()
+    p.clock.pause_at(datetime.now(timezone.utc) + timedelta(seconds=1))
+    held = []
+    p.route("**/api/state*", lambda route: held.append(route), times=1)
+
+    with p.expect_request("**/api/state*"):
+        p.evaluate("async url => { void (await import(url)).refresh(true); }", shell_url)
+    try:
+        assert not p.evaluate(
+            """async url => {
+                const {refresh} = await import(url);
+                window.queuedRefreshDone = false;
+                window.queuedRefresh = refresh(true).then(() => { window.queuedRefreshDone = true; });
+                await Promise.resolve();
+                return window.queuedRefreshDone;
+            }""",
+            shell_url,
+        )
+    finally:
+        for route in held:
+            route.continue_()
+    p.evaluate("() => window.queuedRefresh")
+
+
 @pytest.mark.parametrize("width", [390, 1200])
 def test_admin_reward_list_spacing_and_price_alignment(dashboard, width):
     p = dashboard
