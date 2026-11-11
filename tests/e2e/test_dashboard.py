@@ -1616,7 +1616,7 @@ def test_forced_refresh_waits_for_an_inflight_dashboard_request(dashboard):
         for route in held:
             route.continue_()
     p.clock.resume()
-    p.wait_for_function("window.queuedRefreshDone")
+    p.wait_for_function("() => window.queuedRefreshDone")
 
 
 @pytest.mark.parametrize("width", [390, 1200])
